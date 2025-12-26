@@ -937,7 +937,7 @@ function Test-CodeChanges {
 # Build Functions
 # ==========================================
 
-function Build-Project {
+function Invoke-ProjectBuild {
     <#
     .SYNOPSIS
         Build the Unreal project with real-time output
