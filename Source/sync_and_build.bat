@@ -10,7 +10,7 @@ echo ==========================================
 echo.
 
 REM Run the PowerShell script with execution policy bypass
-PowerShell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0sync_and_build.ps1" %*
+PowerShell.exe -ExecutionPolicy Bypass -NoProfile -Command "& { . '%~dp0sync_and_build.ps1'; Main }" %*
 
 REM Check if PowerShell script succeeded
 if %ERRORLEVEL% NEQ 0 (

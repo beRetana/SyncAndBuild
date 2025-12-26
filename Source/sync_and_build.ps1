@@ -1122,176 +1122,188 @@ function Start-UnrealEditor {
 # ==========================================
 # Main Script
 # ==========================================
+function Main 
+{
+    <#
+    .SYNOPSIS
+        Main script execution
+    #>
 
-try {
-    # Initialize
-    Initialize-Log
-    
-    Write-Host ""
-    Write-Header "UNREAL ENGINE - SYNC AND BUILD TOOL v2.0"
-    Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
-    Write-Host ""
-    
-    # Initialize project paths
-    Write-Log "Initializing project paths..." "INFO"
-    Initialize-ProjectPaths
-    
-    Write-Host "Project: $script:projectName" -ForegroundColor White
-    Write-Host "Location: $script:projectRoot" -ForegroundColor Gray
-    Write-Host ""
-    
-    # Get Unreal Engine path
-    $ueRoot = Get-UnrealEngineRoot
-    Test-UnrealEngineValid -UERoot $ueRoot
-    
-    Write-Host "Unreal Engine: $ueRoot" -ForegroundColor White
-    Write-Host ""
-    
-    # Check if initial build is needed
-    if (-not (Test-ProjectBinariesExist)) {
-        Write-Header "INITIAL BUILD REQUIRED"
-        Write-Host "Project binaries not found. This is normal for first-time setup." -ForegroundColor Yellow
-        Write-Host "An initial build is required before the editor can open." -ForegroundColor Yellow
+    try 
+    {
+        # Initialize
+        Initialize-Log
+        
         Write-Host ""
-        Write-Host "This will take 10-30 minutes depending on your hardware." -ForegroundColor Yellow
+        Write-Header "UNREAL ENGINE - SYNC AND BUILD TOOL v2.0"
+        Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
         Write-Host ""
         
-        if (-not (Build-Project -UERoot $ueRoot -CleanBuild:$Clean)) {
-            throw "Initial build failed"
+        # Initialize project paths
+        Write-Log "Initializing project paths..." "INFO"
+        Initialize-ProjectPaths
+        
+        Write-Host "Project: $script:projectName" -ForegroundColor White
+        Write-Host "Location: $script:projectRoot" -ForegroundColor Gray
+        Write-Host ""
+        
+        # Get Unreal Engine path
+        $ueRoot = Get-UnrealEngineRoot
+        Test-UnrealEngineValid -UERoot $ueRoot
+        
+        Write-Host "Unreal Engine: $ueRoot" -ForegroundColor White
+        Write-Host ""
+    
+        # Check if initial build is needed
+        if (-not (Test-ProjectBinariesExist)) {
+            Write-Header "INITIAL BUILD REQUIRED"
+            Write-Host "Project binaries not found. This is normal for first-time setup." -ForegroundColor Yellow
+            Write-Host "An initial build is required before the editor can open." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "This will take 10-30 minutes depending on your hardware." -ForegroundColor Yellow
+            Write-Host ""
+            
+            if (-not (Build-Project -UERoot $ueRoot -CleanBuild:$Clean)) {
+                throw "Initial build failed"
+            }
+            
+            Write-Host ""
         }
-        
-        Write-Host ""
-    }
     
-    # Sync from Perforce
-    if (-not (Sync-FromPerforce)) {
-        throw "Perforce sync failed"
-    }
-    
-    # Check for code changes and build if needed
-    Write-Header "STEP 2: CHECKING FOR CODE CHANGES"
-    
-    $currentCL = Get-LatestHaveChangelist
-    $needsBuild = $false
-    
-    if (-not $currentCL) {
-        Write-Host "Warning: Could not determine current changelist" -ForegroundColor Yellow
-        Write-Log "No changelist information available" "WARNING"
-        
-        if ($ForceBuild) {
-            $needsBuild = $true
+        # Sync from Perforce
+        if (-not (Sync-FromPerforce)) {
+            throw "Perforce sync failed"
         }
-    } else {
-        Write-Host "Current changelist: $currentCL" -ForegroundColor Cyan
+    
+        # Check for code changes and build if needed
+        Write-Header "STEP 2: CHECKING FOR CODE CHANGES"
         
-        # Check if we already built this CL
-        $lastBuiltCL = Get-ConfigValue $BUILD_LASTCL_KEY -DefaultValue 0
-        Write-Host "Last built changelist: $lastBuiltCL" -ForegroundColor Gray
-        Write-Host ""
-        
-        if ($ForceBuild) {
-            Write-Host "Force build requested" -ForegroundColor Yellow
-            Write-Log "Force build requested by user" "INFO"
-            $needsBuild = $true
+        $currentCL = Get-LatestHaveChangelist
+        $needsBuild = $false
+    
+        if (-not $currentCL) {
+            Write-Host "Warning: Could not determine current changelist" -ForegroundColor Yellow
+            Write-Log "No changelist information available" "WARNING"
             
-        } elseif ($Clean) {
-            Write-Host "Clean build requested" -ForegroundColor Yellow
-            Write-Log "Clean build requested by user" "INFO"
-            $needsBuild = $true
-            
-        } elseif ($currentCL -ne $lastBuiltCL) {
-            Write-Host "Checking for code changes..." -ForegroundColor Cyan
-            
-            # Check if there are code changes
-            if (Test-CodeChanges -Changelist $currentCL -FromCL $lastBuiltCL) {
-                Write-Host "Code changes detected!" -ForegroundColor Yellow
-                Write-Log "Code changes detected between CL $lastBuiltCL and CL $currentCL" "INFO"
+            if ($ForceBuild) {
                 $needsBuild = $true
-            } else {
-                Write-Host "No code changes detected - skipping build" -ForegroundColor Green
-                Write-Log "No code changes detected" "INFO"
+            }
+        } else {
+            Write-Host "Current changelist: $currentCL" -ForegroundColor Cyan
+            
+            # Check if we already built this CL
+            $lastBuiltCL = Get-ConfigValue $BUILD_LASTCL_KEY -DefaultValue 0
+            Write-Host "Last built changelist: $lastBuiltCL" -ForegroundColor Gray
+            Write-Host ""
+            
+            if ($ForceBuild) {
+                Write-Host "Force build requested" -ForegroundColor Yellow
+                Write-Log "Force build requested by user" "INFO"
+                $needsBuild = $true
                 
-                # Update tracker even though we didn't build
-                Set-ConfigValue $BUILD_LASTCL_KEY $currentCL
+            } elseif ($Clean) {
+                Write-Host "Clean build requested" -ForegroundColor Yellow
+                Write-Log "Clean build requested by user" "INFO"
+                $needsBuild = $true
+                
+            } elseif ($currentCL -ne $lastBuiltCL) {
+                Write-Host "Checking for code changes..." -ForegroundColor Cyan
+                
+                # Check if there are code changes
+                if (Test-CodeChanges -Changelist $currentCL -FromCL $lastBuiltCL) {
+                    Write-Host "Code changes detected!" -ForegroundColor Yellow
+                    Write-Log "Code changes detected between CL $lastBuiltCL and CL $currentCL" "INFO"
+                    $needsBuild = $true
+                } else {
+                    Write-Host "No code changes detected - skipping build" -ForegroundColor Green
+                    Write-Log "No code changes detected" "INFO"
+                    
+                    # Update tracker even though we didn't build
+                    Set-ConfigValue $BUILD_LASTCL_KEY $currentCL
+                }
+            } else {
+                Write-Host "Project already built for this changelist" -ForegroundColor Green
+                Write-Log "Already built CL $currentCL" "SUCCESS"
             }
-        } else {
-            Write-Host "Project already built for this changelist" -ForegroundColor Green
-            Write-Log "Already built CL $currentCL" "SUCCESS"
         }
-    }
     
-    Write-Host ""
-    
-    # Build if needed
-    if ($needsBuild) {
-        if (Build-Project -UERoot $ueRoot -CleanBuild:$Clean) {
-            # Save the changelist we just built
-            if ($currentCL) {
-                Set-ConfigValue $BUILD_LASTCL_KEY $currentCL
-                Write-Log "Updated last built CL to: $currentCL" "INFO"
-            }
-        } else {
-            throw "Build failed"
-        }
-    } else {
-        Write-Host "No build required" -ForegroundColor Green
         Write-Host ""
-    }
-    
-    # Launch editor
-    if (-not (Start-UnrealEditor -UERoot $ueRoot)) {
-        Write-Log "Editor launch failed or cancelled" "WARNING"
-    }
-    
-    # Success
-    Write-Header "COMPLETE"
-    Write-Host "Finished: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "Log file: $logFile" -ForegroundColor DarkGray
-    Write-Host ""
+        
+        # Build if needed
+        if ($needsBuild) {
+            if (Build-Project -UERoot $ueRoot -CleanBuild:$Clean) {
+                # Save the changelist we just built
+                if ($currentCL) {
+                    Set-ConfigValue $BUILD_LASTCL_KEY $currentCL
+                    Write-Log "Updated last built CL to: $currentCL" "INFO"
+                }
+            } else {
+                throw "Build failed"
+            }
+        } else {
+            Write-Host "No build required" -ForegroundColor Green
+            Write-Host ""
+        }
+        
+        # Launch editor
+        if (-not (Start-UnrealEditor -UERoot $ueRoot)) {
+            Write-Log "Editor launch failed or cancelled" "WARNING"
+        }
+        
+        # Success
+        Write-Header "COMPLETE"
+        Write-Host "Finished: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "Log file: $logFile" -ForegroundColor DarkGray
+        Write-Host ""
     
     $footer = @"
 
 Finished: $(Get-Date)
 ==========================================
 "@
-    $footer | Out-File -FilePath $logFile -Append -Encoding UTF8
+        $footer | Out-File -FilePath $logFile -Append -Encoding UTF8
+        
+        Write-Log "Script completed successfully" "SUCCESS"
+        
+        exit 0
     
-    Write-Log "Script completed successfully" "SUCCESS"
+    } 
+    catch [BuildException] 
+    {
+        # Specific build exception with helpful info
+        Write-Host ""
+        Write-Host "==========================================" -ForegroundColor Red
+        Write-Host "SCRIPT FAILED" -ForegroundColor Red
+        Write-Host "==========================================" -ForegroundColor Red
+        Write-Host ""
+        Write-DetailedError -Message $_.Message -Category $_.Category -Suggestion $_.Suggestion
+        Write-Host "Log file: $logFile" -ForegroundColor Yellow
+        Write-Host ""
+        
+        Write-Log "Script failed: $($_.Message)" "ERROR"
+        
+        exit 1
     
-    exit 0
-    
-} catch [BuildException] {
-    # Specific build exception with helpful info
-    Write-Host ""
-    Write-Host "==========================================" -ForegroundColor Red
-    Write-Host "SCRIPT FAILED" -ForegroundColor Red
-    Write-Host "==========================================" -ForegroundColor Red
-    Write-Host ""
-    Write-DetailedError -Message $_.Message -Category $_.Category -Suggestion $_.Suggestion
-    Write-Host "Log file: $logFile" -ForegroundColor Yellow
-    Write-Host ""
-    
-    Write-Log "Script failed: $($_.Message)" "ERROR"
-    
-    exit 1
-    
-} catch {
-    # Generic error
-    Write-Host ""
-    Write-Host "==========================================" -ForegroundColor Red
-    Write-Host "SCRIPT FAILED" -ForegroundColor Red
-    Write-Host "==========================================" -ForegroundColor Red
-    Write-Host ""
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Stack trace:" -ForegroundColor Yellow
-    Write-Host $_.ScriptStackTrace -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "Log file: $logFile" -ForegroundColor Yellow
-    Write-Host ""
-    
-    Write-Log "Script failed with unhandled exception: $($_.Exception.Message)" "ERROR"
-    
-    exit 1
+    } 
+    catch 
+    {
+        # Generic error
+        Write-Host ""
+        Write-Host "==========================================" -ForegroundColor Red
+        Write-Host "SCRIPT FAILED" -ForegroundColor Red
+        Write-Host "==========================================" -ForegroundColor Red
+        Write-Host ""
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Stack trace:" -ForegroundColor Yellow
+        Write-Host $_.ScriptStackTrace -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "Log file: $logFile" -ForegroundColor Yellow
+        Write-Host ""
+        
+        Write-Log "Script failed with unhandled exception: $($_.Exception.Message)" "ERROR"
+        
+        exit 1
+    }
 }

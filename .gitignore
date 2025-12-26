@@ -2,3 +2,5 @@
 Logs/*
 Tests/*
 Config/*
+
+*.xml
