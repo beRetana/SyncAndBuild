@@ -9,14 +9,6 @@
             "cwd": "${workspaceFolder}"
         },
         {
-            "name": "Run Tests (Watch)",
-            "type": "PowerShell",
-            "request": "launch",
-            "script": "${workspaceFolder}/Tests/RunTests.ps1",
-            "args": ["-Watch"],
-            "cwd": "${workspaceFolder}"
-        },
-        {
             "name": "Run Tests (Coverage)",
             "type": "PowerShell",
             "request": "launch",

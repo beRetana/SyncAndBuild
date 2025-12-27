@@ -1,58 +1,5 @@
 #Requires -Version 5.0
 
-<#
-.SYNOPSIS
-    Unreal Engine Project - Sync and Build Automation Tool
-
-.DESCRIPTION
-    Syncs project from Perforce, detects code changes, builds if needed,
-    and optionally launches the Unreal Editor.
-
-.PARAMETER SkipSync
-    Skip Perforce sync (useful for local testing)
-
-.PARAMETER Clean
-    Force a clean rebuild (delete binaries first)
-
-.PARAMETER ForceBuild
-    Force rebuild even if no code changes detected
-
-.PARAMETER NoPrompt
-    Auto-launch editor without prompting
-
-.PARAMETER Verbose
-    Show detailed operation logs
-
-.EXAMPLE
-    .\sync_and_build.bat
-    Normal operation - sync, check for changes, build if needed
-
-.EXAMPLE
-    .\sync_and_build.bat -Clean
-    Force a clean rebuild
-
-.EXAMPLE
-    .\sync_and_build.bat -SkipSync -ForceBuild
-    Skip sync and force build
-
-.NOTES
-    Version: 2.0
-    Improvements over v1:
-    - Fixed build performance (no output redirection)
-    - Fixed sync reliability (proper P4 commands)
-    - Auto-detects project name
-    - Better error handling
-    - Real-time progress feedback
-#>
-
-param(
-    [switch]$SkipSync = $false,
-    [switch]$Clean = $false,
-    [switch]$ForceBuild = $false,
-    [switch]$NoPrompt = $false,
-    [switch]$Verbose = $false
-)
-
 # ==========================================
 # Setup and Initialization
 # ==========================================
@@ -728,6 +675,10 @@ function Sync-FromPerforce {
     .SYNOPSIS
         Sync project from Perforce with proper error handling
     #>
+
+    param(
+        [switch]$SkipSync = $false
+    )
     
     Write-Header "STEP 1: SYNCING FROM PERFORCE"
     
@@ -907,7 +858,7 @@ function Test-CodeChanges {
             Write-Log "Describing CL $clNum" "VERBOSE"
 
             $description = p4 describe -s $clNum 2>&1 | Out-String
-            
+            Write-Log "CL $clNum description: `n$description"
             foreach ($ext in $codeExtensions) 
             {
                 $pattern = [regex]::Escape($ext) + "#\d+"
@@ -1126,8 +1077,45 @@ function Main
 {
     <#
     .SYNOPSIS
-        Main script execution
+        Unreal Engine Project - Sync and Build Automation Tool
+
+    .DESCRIPTION
+        Syncs project from Perforce, detects code changes, builds if needed,
+        and optionally launches the Unreal Editor.
+
+    .PARAMETER SkipSync
+        Skip Perforce sync (useful for local testing)
+
+    .PARAMETER Clean
+        Force a clean rebuild (delete binaries first)
+
+    .PARAMETER ForceBuild
+        Force rebuild even if no code changes detected
+
+    .PARAMETER NoPrompt
+        Auto-launch editor without prompting
+
+    .PARAMETER Verbose
+        Show detailed operation logs
+
+    .NOTES
+        Version: 2.0
+        Improvements over v1:
+        - Fixed build performance (no output redirection)
+        - Fixed sync reliability (proper P4 commands)
+        - Auto-detects project name
+        - Better error handling
+        - Real-time progress feedback
     #>
+
+
+    param(
+        [switch]$SkipSync = $false,
+        [switch]$Clean = $false,
+        [switch]$ForceBuild = $false,
+        [switch]$NoPrompt = $false,
+        [switch]$Verbose = $false
+    )
 
     try 
     {
@@ -1163,7 +1151,7 @@ function Main
             Write-Host "This will take 10-30 minutes depending on your hardware." -ForegroundColor Yellow
             Write-Host ""
             
-            if (-not (Build-Project -UERoot $ueRoot -CleanBuild:$Clean)) {
+            if (-not (Build-Project -UERoot:$ueRoot -CleanBuild:$Clean)) {
                 throw "Initial build failed"
             }
             
@@ -1171,7 +1159,7 @@ function Main
         }
     
         # Sync from Perforce
-        if (-not (Sync-FromPerforce)) {
+        if (-not (Sync-FromPerforce -SkipSync:$SkipSync)) {
             throw "Perforce sync failed"
         }
     
