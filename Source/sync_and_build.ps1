@@ -48,8 +48,8 @@ $null = New-Item -ItemType Directory -Force -Path $configDir
 $null = New-Item -ItemType Directory -Force -Path $logsDir
 
 # Config files
-$configFile = Join-Path $configDir $script:CONSTANTS.FileNames.ConfigFileName
-$logFile = Join-Path $logsDir $script:CONSTANTS.FileNames.RunLogFileName
+$script:configFile = Join-Path $configDir $script:CONSTANTS.FileNames.ConfigFileName
+$script:logFile = Join-Path $logsDir $script:CONSTANTS.FileNames.RunLogFileName
 
 # Will be set during initialization
 $script:projectRoot = $null
@@ -174,7 +174,7 @@ function Get-Config {
         return $script:configCache
     }
     
-    if (-not (Test-Path $configFile)) {
+    if (-not (Test-Path $script:configFile)) {
         Write-Log "Creating default config file" "INFO"
         
         # Create default config
@@ -212,13 +212,13 @@ function Get-Config {
             }
         }
         
-        $defaultConfig | ConvertTo-Json -Depth $JSON_CONFIG_DEPTH | Out-File -FilePath $configFile -Encoding UTF8
+        $defaultConfig | ConvertTo-Json -Depth $script:CONSTANTS.SearchRecursionDepth | Out-File -FilePath $script:configFile -Encoding UTF8
         $script:configCache = $defaultConfig
         return $defaultConfig
     }
     
     try {
-        $config = Get-Content $configFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        $config = Get-Content $script:configFile -Raw -Encoding UTF8 | ConvertFrom-Json
         
         # Validate required fields
         if (-not $config.version) {
@@ -234,7 +234,7 @@ function Get-Config {
         throw [BuildException]::new(
             "Failed to read config file: $($_.Exception.Message)",
             "Configuration",
-            "Delete $configFile and run the script again to recreate it"
+            "Delete $script:configFile and run the script again to recreate it"
         )
     }
 }
@@ -247,7 +247,7 @@ function Save-Config {
     param($Config)
     
     try {
-        $Config | ConvertTo-Json -Depth $JSON_CONFIG_DEPTH | Out-File -FilePath $configFile -Encoding UTF8
+        $Config | ConvertTo-Json -Depth $script:CONSTANTS.SearchRecursionDepth | Out-File -FilePath $script:configFile -Encoding UTF8
         $script:configCache = $Config
         Write-Log "Config saved" "VERBOSE"
     } catch {
@@ -508,12 +508,20 @@ function Find-UnrealEngine {
         
         if ($choice -eq "B" -or $choice -eq "b") {
             # Open folder browser
+
+            $form = New-Object System.Windows.Forms.Form
+            $form.TopMost = $true 
+            $form.WindowState = "Minimized"
+            $form.ShowInTaskbar = $false 
+
             Add-Type -AssemblyName System.Windows.Forms
             $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
             $dialog.Description = "Select your Unreal Engine installation folder (e.g., UE_5.6)"
             $dialog.RootFolder = "MyComputer"
             
-            $result = $dialog.ShowDialog()
+            $result = $dialog.ShowDialog($form)
+
+            $form.Dispose()
             
             if ($result -eq "OK") {
                 $selectedPath = $dialog.SelectedPath
