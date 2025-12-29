@@ -25,6 +25,7 @@ $script:CONSTANTS = @{
         UseUBTLogging = "build.useUBTLogging"
         LastBuiltCL = "build.lastBuiltCL"
         PerforceFileExtentions = "perforce.fileExtensions"
+        LoggingVerbose = "logging.verbose"
     }
     
     Paths = @{
@@ -88,7 +89,7 @@ Started: $(Get-Date)
 ==========================================
 
 "@
-    $header | Out-File -FilePath $logFile -Encoding UTF8
+    $header | Out-File -FilePath $script:logFile -Encoding UTF8
 }
 
 function Write-Log {
@@ -104,17 +105,15 @@ function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Level] $Message"
     
-    # Write to log file
-    Add-Content -Path $logFile -Value $logMessage -Encoding UTF8
+    Add-Content -Path $script:logFile -Value $logMessage -Encoding UTF8
     
-    # Write to console with colors
     switch ($Level) {
         "ERROR"   { Write-Host "[ERROR] $Message" -ForegroundColor Red }
         "WARNING" { Write-Host "[WARN] $Message" -ForegroundColor Yellow }
         "SUCCESS" { Write-Host "[OK] $Message" -ForegroundColor Green }
         "INFO"    { Write-Host "[INFO] $Message" -ForegroundColor Cyan }
         "VERBOSE" { 
-            if ($Verbose) {
+            if (Get-ConfigValue $script:CONSTANTS.ConfigKeys.LoggingVerbose -DefaultValue $false) {
                 Write-Host "[VERBOSE] $Message" -ForegroundColor Gray
             }
         }
@@ -153,8 +152,7 @@ function Write-DetailedError {
     
     if ($Suggestion) {
         Write-Host ""
-        Write-Host "SUGGESTION:" -ForegroundColor Yellow
-        Write-Host "  $Suggestion" -ForegroundColor Yellow
+        Write-Host "SUGGESTION: $Suggestion" -ForegroundColor Yellow
     }
     Write-Host ""
 }
@@ -231,8 +229,9 @@ function Get-Config {
         return $config
         
     } catch {
+        $errorMessage = $_.Exception.Message
         throw [BuildException]::new(
-            "Failed to read config file: $($_.Exception.Message)",
+            "Failed to read config file: $errorMessage",
             "Configuration",
             "Delete $script:configFile and run the script again to recreate it"
         )
@@ -294,9 +293,9 @@ function Set-ConfigValue {
         $Value
     )
     
-    $config = Get-Config
+    $startingConfigPoint = Get-Config
     $parts = $Path -split '\.'
-    $current = $config
+    $current = $startingConfigPoint
     
     for ($i = 0; $i -lt $parts.Count - 1; $i++) {
         $part = $parts[$i]
@@ -313,7 +312,7 @@ function Set-ConfigValue {
         $current | Add-Member -NotePropertyName $lastPart -NotePropertyValue $Value -Force
     }
     
-    Save-Config -Config $config
+    Save-Config -Config $startingConfigPoint
 }
 
 # ==========================================
