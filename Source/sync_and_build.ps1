@@ -708,34 +708,34 @@ function Sync-FromPerforce {
         Push-Location $script:projectRoot
         
         try {
-            # Execute sync and capture output
             $syncOutput = @()
             $syncError = @()
-            
-            # Run P4 sync and show output in real-time
-            & {
-                $ErrorActionPreference = "Continue" 
-                # Perforce might throw an exception for when everything is up-to-date, we need to collect the logs then check for them.
-                & p4 sync ... 2>&1 | ForEach-Object {
-                    $line = $_.ToString()
-
-                    if ($_ -is [System.Management.Automation.ErrorRecord])
-                    {
-                        $syncError += $line
-                    }
-                    else
-                    {
-                        $syncOutput += $line
-                        
-                        # Show progress to user
-                        if ($line -match "^//") {
-                            Write-Host $line -ForegroundColor DarkGray
-                        }
-                    }
-                }
+             
+            # Perforce might throw an exception for when everything is up-to-date, we need to collect the logs then check for them.
+            $p4Output = & { 
+                $ErrorActionPreference = "Continue"
+                & p4 sync ... 2>&1 
             }
 
             $syncExitCode = $LASTEXITCODE
+            
+            foreach ($outputObject in $p4Output) {
+                $line = $outputObject.ToString()
+
+                if ($outputObject -is [System.Management.Automation.ErrorRecord])
+                {
+                    $syncError += $line
+                }
+                else
+                {
+                    $syncOutput += $line
+                    
+                    # Show progress to user
+                    if ($line -match "^//") {
+                        Write-Host $line -ForegroundColor DarkGray
+                    }
+                }
+            }
             
             # Check result using exit code
             if ($syncExitCode -eq 0 -or $syncError -match $script:CONSTANTS.PerforceUpToDate) {
