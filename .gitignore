@@ -1,6 +1,5 @@
 # Files to Not Include
 Logs/*
-Tests/*
 Config/*
 
 *.xml
