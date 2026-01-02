@@ -768,11 +768,12 @@ function Sync-FromPerforce {
             } else {
                 # Sync failed
                 $errorMsg = $syncError | Where-Object { $_ -match "error|failed|can't" } | Select-Object -First 5
+                $jointErrorMsg = $errorMsg -join "; "
                 
                 throw [BuildException]::new(
                     "Perforce sync failed (Exit code: $syncExitCode)",
                     "Perforce",
-                    "Check your network connection and workspace mapping. Error: $($errorMsg -join '; ')"
+                    "Check your network connection and workspace mapping. Error: $jointErrorMsg"
                 )
             }
             
@@ -816,11 +817,16 @@ function Get-LatestHaveChangelist {
         }
         
         Write-Log "Could not determine changelist (output: $output)" "VERBOSE"
-        return $null
+        throw "Could not determine changelist (output: $output)"
         
     } catch {
-        Write-Log "Could not get changelist info: $($_.Exception.Message)" "WARNING"
-        return $null
+        $Message = $_.Exception.Message
+        Write-Log "Could not get changelist info: $Message" "WARNING"
+        throw [BuildException]::new(
+            "Could not get changelist info: $Message",
+            "Perforce",
+            "Check your Perforce connection and workspace"
+        )
     } finally {
         Pop-Location
     }
@@ -883,8 +889,8 @@ function Test-CodeChanges {
         return $foundChanges
         
     } catch {
-        Write-Log "Could not check for code changes: $($_.Exception.Message)" "WARNING"
-        # If we can't determine, assume there are changes to be safe
+        $Message = $_.Exception.Message
+        Write-Log "Could not check for code changes: $Message" "WARNING"
         return $true
     }
 }

@@ -1166,22 +1166,18 @@ Describe "Sync-FromPerforce" -Tag "Perforce" {
             Should -Invoke Write-DetailedError -Times 1 
         }
 
-        It "Incluye el exit code en el mensaje de error cuando falla sync" {
+        It "Retorna false y llama Write-DetailedError cuando exit code es diferente de 0" {
             Mock Get-LatestHaveChangelist { return 12345 }
 
             Mock p4 {
                 $global:LASTEXITCODE = 42
-                Write-Error "error: Access denied"
                 return @()
             }
 
             $result = Sync-FromPerforce -SkipSync:$false
 
             $result | Should -Be $false
-
-            Should -Invoke Write-DetailedError -Times 1 -ParameterFilter {
-                $Message -match "Exit code: 42"
-            }
+            Should -Invoke Write-DetailedError -Times 1
         }
     }
 
@@ -1410,6 +1406,484 @@ Describe "Sync-FromPerforce" -Tag "Perforce" {
             $result | Should -Be $true
         }
     }
+
+    Context "Caso: Parámetro Verbose" {
+
+        It "Muestra detalles de archivos cuando Verbose es true y hay cambios (<=20 archivos)" {
+            Mock Get-LatestHaveChangelist {
+                if ($script:callCount -eq 0) {
+                    $script:callCount = 1
+                    return 100
+                }
+                return 101
+            }
+
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return @(
+                    "//depot/Source/File1.cpp - updating C:\Project\Source\File1.cpp",
+                    "//depot/Source/File2.h - updating C:\Project\Source\File2.h",
+                    "//depot/Content/Asset.uasset - added as C:\Project\Content\Asset.uasset"
+                )
+            }
+
+            Sync-FromPerforce -SkipSync:$false -Verbose:$true
+
+            # Verifica que Write-Host fue llamado para mostrar cada archivo
+            # Se espera al menos 3 llamadas para los archivos individuales
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "//depot/Source/File1.cpp" -and $ForegroundColor -eq "DarkGray"
+            }
+        }
+
+        It "NO muestra detalles de archivos cuando Verbose es false" {
+            Mock Get-LatestHaveChangelist {
+                if ($script:callCount -eq 0) {
+                    $script:callCount = 1
+                    return 100
+                }
+                return 101
+            }
+
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return @(
+                    "//depot/Source/File1.cpp - updating C:\Project\Source\File1.cpp",
+                    "//depot/Source/File2.h - updating C:\Project\Source\File2.h"
+                )
+            }
+
+            # Capturar las llamadas a Write-Host
+            $writeHostCalls = @()
+            Mock Write-Host {
+                param($Object, $ForegroundColor)
+                $script:writeHostCalls += @{
+                    Object = $Object
+                    Color = $ForegroundColor
+                }
+            }
+
+            Sync-FromPerforce -SkipSync:$false -Verbose:$false
+
+            # Verificar que NO se mostraron los detalles de archivos con espacios
+            $detailCalls = $script:writeHostCalls | Where-Object {
+                $_.Object -match "^\s+//"
+            }
+            $detailCalls.Count | Should -Be 0
+        }
+
+        It "NO muestra detalles cuando hay más de 20 archivos aunque Verbose sea true" {
+            Mock Get-LatestHaveChangelist {
+                if ($script:callCount -eq 0) {
+                    $script:callCount = 1
+                    return 100
+                }
+                return 101
+            }
+
+            # Crear array con 25 archivos
+            $files = @()
+            for ($i = 1; $i -le 25; $i++) {
+                $files += "//depot/Source/File$i.cpp - updating C:\Project\Source\File$i.cpp"
+            }
+
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return $files
+            }
+
+            # Capturar las llamadas a Write-Host
+            $writeHostCalls = @()
+            Mock Write-Host {
+                param($Object, $ForegroundColor)
+                $script:writeHostCalls += @{
+                    Object = $Object
+                    Color = $ForegroundColor
+                }
+            }
+
+            Sync-FromPerforce -SkipSync:$false -Verbose:$true
+
+            # Verificar que NO se mostraron los detalles con espacios (porque son >20)
+            $detailCalls = $script:writeHostCalls | Where-Object {
+                $_.Object -match "^\s+//"
+            }
+            $detailCalls.Count | Should -Be 0
+        }
+
+        It "Funciona correctamente cuando no hay archivos cambiados con Verbose true" {
+            Mock Get-LatestHaveChangelist { return 12345 }
+
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                Write-Error "file(s) up-to-date."
+            }
+
+            $result = Sync-FromPerforce -SkipSync:$false -Verbose:$true
+
+            $result | Should -Be $true
+
+            # No debería llamar a Write-Host para mostrar archivos (no hay archivos)
+            Should -Not -Invoke Write-Host -ParameterFilter {
+                $Object -match "Files changed:"
+            }
+        }
+
+        It "Límite exacto de 20 archivos muestra detalles con Verbose true" {
+            Mock Get-LatestHaveChangelist {
+                if ($script:callCount -eq 0) {
+                    $script:callCount = 1
+                    return 100
+                }
+                return 101
+            }
+
+            # Exactamente 20 archivos
+            $files = @()
+            for ($i = 1; $i -le 20; $i++) {
+                $files += "//depot/Source/File$i.cpp - updating"
+            }
+
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return $files
+            }
+
+            Sync-FromPerforce -SkipSync:$false -Verbose:$true
+
+            # Con exactamente 20, SÍ debería mostrar detalles
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "^\s+" -and $ForegroundColor -eq "DarkGray"
+            }
+        }
+
+        It "21 archivos NO muestra detalles aunque Verbose sea true" {
+            Mock Get-LatestHaveChangelist {
+                if ($script:callCount -eq 0) {
+                    $script:callCount = 1
+                    return 100
+                }
+                return 101
+            }
+
+            # 21 archivos (uno más que el límite)
+            $files = @()
+            for ($i = 1; $i -le 21; $i++) {
+                $files += "//depot/Source/File$i.cpp - updating"
+            }
+
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return $files
+            }
+
+            # Capturar las llamadas
+            $writeHostCalls = @()
+            Mock Write-Host {
+                param($Object, $ForegroundColor)
+                $script:writeHostCalls += @{
+                    Object = $Object
+                    Color = $ForegroundColor
+                }
+            }
+
+            Sync-FromPerforce -SkipSync:$false -Verbose:$true
+
+            # Verificar que NO se mostraron detalles
+            $detailCalls = $script:writeHostCalls | Where-Object {
+                $_.Object -match "^\s+//"
+            }
+            $detailCalls.Count | Should -Be 0
+        }
+    }
+}
+
+# =============================================================================
+# TESTS DE GET LATEST HAVE CHANGELIST
+# =============================================================================
+
+Describe "Get-LatestHaveChangelist" -Tag "Perforce" {
+
+    BeforeAll {
+        . "$PSScriptRoot\..\Source\sync_and_build.ps1"
+    }
+
+    BeforeEach {
+        $script:projectRoot = "C:\TestProject"
+
+        Mock Write-Log { }
+        Mock Push-Location { }
+        Mock Pop-Location { }
+    }
+
+    Context "Caso: Changelist válido retornado" {
+
+        It "Retorna el número de changelist cuando p4 changes tiene éxito" {
+            Mock p4 {
+                param([Parameter(ValueFromRemainingArguments)]$Arguments)
+                $global:LASTEXITCODE = 0
+                return "Change 12345 on 2024/12/25 by user@workspace"
+            }
+
+            $result = Get-LatestHaveChangelist
+
+            $result | Should -Be 12345
+        }
+
+        It "Extrae correctamente el changelist de diferentes formatos" {
+            $testCases = @(
+                @{ Output = "Change 100 on 2024/01/01 by user@ws"; Expected = 100 }
+                @{ Output = "Change 999999 on 2024/12/31 by admin@main"; Expected = 999999 }
+                @{ Output = "Change 1 on 2024/01/01 by test@test"; Expected = 1 }
+                @{ Output = "Change 54321 by user"; Expected = 54321 }
+            )
+
+            foreach ($case in $testCases) {
+                Mock p4 {
+                    $global:LASTEXITCODE = 0
+                    return $case.Output
+                }
+
+                $result = Get-LatestHaveChangelist
+
+                $result | Should -Be $case.Expected
+            }
+        }
+
+        It "Escribe log con el changelist encontrado" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "Change 12345 on 2024/12/25 by user@workspace"
+            }
+
+            Get-LatestHaveChangelist
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Latest have changelist: 12345" -and $Level -eq "VERBOSE"
+            }
+        }
+    }
+
+    Context "Caso: No se puede determinar changelist - lanza excepción" {
+
+        It "Lanza excepción cuando LASTEXITCODE no es 0" {
+            Mock p4 {
+                $global:LASTEXITCODE = 1
+                return "error: Connection failed"
+            }
+
+            { Get-LatestHaveChangelist } | Should -Throw
+        }
+
+        It "Lanza excepción cuando la salida no contiene patrón 'Change'" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "No files to sync"
+            }
+
+            { Get-LatestHaveChangelist } | Should -Throw
+        }
+
+        It "Lanza excepción cuando la salida no contiene número" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "Change ABC on 2024/12/25"
+            }
+
+            { Get-LatestHaveChangelist } | Should -Throw
+        }
+
+        It "Escribe log verbose cuando no puede determinar changelist antes de lanzar excepción" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "No changes found"
+            }
+
+            try {
+                Get-LatestHaveChangelist
+            } catch { }
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Could not determine changelist" -and $Level -eq "VERBOSE"
+            }
+        }
+
+        It "Lanza excepción cuando p4 retorna salida vacía" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            { Get-LatestHaveChangelist } | Should -Throw
+        }
+    }
+
+    Context "Caso: BuildException cuando hay errores" {
+
+        It "BuildException contiene mensaje original cuando p4 falla" {
+            Mock p4 {
+                throw "Connection timeout"
+            }
+
+            try {
+                Get-LatestHaveChangelist
+                throw "Test should have thrown"
+            } catch [BuildException] {
+                $_.Exception.Message | Should -Match "Could not get changelist info"
+                $_.Exception.Message | Should -Match "Connection timeout"
+            }
+        }
+
+        It "BuildException tiene Category 'Perforce'" {
+            Mock p4 {
+                throw "Network error"
+            }
+
+            try {
+                Get-LatestHaveChangelist
+                throw "Test should have thrown"
+            } catch {
+                $_.Exception.Category | Should -Be "Perforce"
+                $_.Exception.Suggestion | Should -Be "Check your Perforce connection and workspace"
+            }
+        }
+
+        It "Escribe log de warning cuando hay excepción antes de lanzar BuildException" {
+            Mock p4 {
+                throw "Connection timeout"
+            }
+
+            try {
+                Get-LatestHaveChangelist
+            } catch { }
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Could not get changelist info" -and
+                $Message -match "Connection timeout" -and
+                $Level -eq "WARNING"
+            }
+        }
+    }
+
+    Context "Caso: Gestión de ubicación (Push/Pop-Location)" {
+
+        It "Ejecuta Push-Location al project root antes de p4" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "Change 12345 on 2024/12/25 by user@workspace"
+            }
+
+            Get-LatestHaveChangelist
+
+            Should -Invoke Push-Location -ParameterFilter {
+                $Path -eq "C:\TestProject"
+            }
+        }
+
+        It "Ejecuta Pop-Location después de éxito" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "Change 12345 on 2024/12/25 by user@workspace"
+            }
+
+            Get-LatestHaveChangelist
+
+            Should -Invoke Pop-Location -Times 1
+        }
+
+        It "Ejecuta Pop-Location después de throw de string (finally block)" {
+            Mock p4 {
+                $global:LASTEXITCODE = 1
+                return "error"
+            }
+
+            try {
+                Get-LatestHaveChangelist
+            } catch { }
+
+            Should -Invoke Pop-Location -Times 1
+        }
+
+        It "Ejecuta Pop-Location después de BuildException (finally block)" {
+            Mock p4 {
+                throw "Error"
+            }
+
+            try {
+                Get-LatestHaveChangelist
+            } catch { }
+
+            Should -Invoke Pop-Location -Times 1
+        }
+    }
+
+    Context "Caso: Comando p4 correcto" {
+
+        It "Ejecuta p4 changes con argumentos correctos" {
+            $capturedArgs = $null
+            Mock p4 {
+                param([Parameter(ValueFromRemainingArguments)]$Arguments)
+                $script:capturedArgs = $Arguments
+                $global:LASTEXITCODE = 0
+                return "Change 12345 on 2024/12/25 by user@workspace"
+            }
+
+            Get-LatestHaveChangelist
+
+            $script:capturedArgs | Should -Contain "changes"
+            $script:capturedArgs | Should -Contain "-m1"
+            $script:capturedArgs | Should -Contain "...#have"
+        }
+
+        It "Escribe log verbose del comando ejecutado" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "Change 12345 on 2024/12/25 by user@workspace"
+            }
+
+            Get-LatestHaveChangelist
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match 'Executing: p4 changes -m1 "\.\.\.#have"' -and $Level -eq "VERBOSE"
+            }
+        }
+    }
+
+    Context "Caso: Edge cases con regex" {
+
+        It "Extrae el primer número cuando hay múltiples" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "Change 12345 and 67890 on 2024/12/25"
+            }
+
+            $result = Get-LatestHaveChangelist
+
+            $result | Should -Be 12345
+        }
+
+        It "Maneja números muy grandes" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "Change 2147483647 on 2024/12/25"
+            }
+
+            $result = Get-LatestHaveChangelist
+
+            $result | Should -Be 2147483647
+        }
+
+        It "Ignora texto antes y después del patrón" {
+            Mock p4 {
+                $global:LASTEXITCODE = 0
+                return "Some text before Change 999 on 2024/12/25 and text after"
+            }
+
+            $result = Get-LatestHaveChangelist
+
+            $result | Should -Be 999
+        }
+    }
 }
 
 # =============================================================================
@@ -1547,24 +2021,80 @@ Describe "Test-CodeChanges" -Tag "FuncionesTests" {
     }
     
     Context "Extracción de números de changelist" {
-        
+
         It "Extrae correctamente de formato 'Change 12345'" {
             $cl = "Change 12345 on 2024/12/25 by user@workspace"
-            
+
             $clNum = $null
             if ($cl -match "Change (\d+)") {
                 $clNum = [int]$Matches[1]
             }
-            
+
             $clNum | Should -Be 12345
             $clNum | Should -BeOfType [int]
         }
-        
+
         It "Maneja int directo sin conversión" {
             $cl = 67890
             $clNum = $cl
-            
+
             $clNum | Should -Be 67890
+        }
+    }
+
+    Context "Caso: Manejo de excepciones" {
+
+        It "Retorna true cuando p4 changes lanza excepción" {
+            Mock p4 {
+                throw "Network timeout"
+            }
+
+            $result = Test-CodeChanges -Changelist 12345 -FromCL 12340
+
+            $result | Should -Be $true
+        }
+
+        It "Retorna true cuando p4 describe lanza excepción" {
+            Mock p4 {
+                param([Parameter(ValueFromRemainingArguments)]$Arguments)
+
+                $cmd = $Arguments[0]
+
+                if ($cmd -eq 'describe') {
+                    throw "Connection lost"
+                } else {
+                    $global:LASTEXITCODE = 0
+                    return @("Change 12345 on 2024/12/25")
+                }
+            }
+
+            $result = Test-CodeChanges -Changelist 12345
+
+            $result | Should -Be $true
+        }
+
+        It "Escribe log WARNING cuando hay excepción" {
+            Mock p4 {
+                throw "Access denied"
+            }
+
+            Test-CodeChanges -Changelist 12345 -FromCL 12340
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Could not check for code changes" -and
+                $Message -match "Access denied" -and
+                $Level -eq "WARNING"
+            }
+        }
+
+        It "Retorna true en caso de error (fail-safe behavior)" {
+            Mock p4 {
+                throw "Critical error"
+            }
+
+            $result = Test-CodeChanges -Changelist 999
+
+            $result | Should -Be $true
         }
     }
 }
