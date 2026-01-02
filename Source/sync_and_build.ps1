@@ -584,7 +584,7 @@ function Get-UnrealEngineRoot {
     
     # Save to config
     Set-ConfigValue $script:CONSTANTS.ConfigKeys.EnginePath $uePath
-    Write-Log "UE path saved to config" "SUCCESS"
+    Write-Log "UE path saved to config" "INFO"
     
     return $uePath
 }
@@ -608,7 +608,11 @@ function Test-UnrealEngineValid {
     }
     
     if (-not (Test-Path $editorExe)) {
-        Write-Log "UnrealEditor.exe not found (may need to build engine)" "WARNING"
+        throw [BuildException]::new(
+            "UnrealEditor.exe not found",
+            "Unreal Engine",
+            "Ensure you compile the Engine or select a different installation"
+        )
     }
     
     return $true
@@ -657,8 +661,9 @@ function Test-PerforceEnvironment {
         }
         
     } catch {
+        $Message = $_.Exception.Message
         throw [BuildException]::new(
-            "Cannot connect to Perforce server: $($_.Exception.Message)",
+            "Cannot connect to Perforce server: $Message",
             "Perforce",
             "Run 'p4 info' to check your connection. Ensure P4PORT, P4USER, and P4CLIENT are set correctly."
         )
@@ -672,7 +677,8 @@ function Sync-FromPerforce {
     #>
 
     param(
-        [switch]$SkipSync = $false
+        [switch]$SkipSync = $false,
+        [switch]$Verbose = $false
     )
     
     Write-Header "STEP 1: SYNCING FROM PERFORCE"
@@ -739,10 +745,10 @@ function Sync-FromPerforce {
                 
                 if ($beforeCL -eq $afterCL) {
                     Write-Host "Already up-to-date (CL $afterCL)" -ForegroundColor Green
-                    Write-Log "Already up-to-date at CL $afterCL" "SUCCESS"
+                    Write-Log "Already up-to-date at CL $afterCL" "INFO"
                 } else {
                     Write-Host "Successfully synced from CL $beforeCL to CL $afterCL" -ForegroundColor Green
-                    Write-Log "Synced from CL $beforeCL to CL $afterCL" "SUCCESS"
+                    Write-Log "Synced from CL $beforeCL to CL $afterCL" "INFO"
                     
                     # Show summary of changes
                     $updatedFiles = $syncOutput | Where-Object { $_ -match "updating|added|deleted" }
@@ -775,11 +781,15 @@ function Sync-FromPerforce {
         }
         
     } catch [BuildException] {
-        Write-DetailedError -Message $_.Message -Category $_.Category -Suggestion $_.Suggestion
+        Write-DetailedError `
+            -Message $_.Exception.Message `
+            -Category $_.Exception.Category `
+            -Suggestion $_.Exception.Suggestion
         return $false
     } catch {
+        $Message = $_.Exception.Message
         Write-DetailedError `
-            -Message "Sync error: $($_.Exception.Message)" `
+            -Message "Sync error: $Message" `
             -Category "Perforce" `
             -Suggestion "Run 'p4 set' to check your Perforce configuration"
         return $false

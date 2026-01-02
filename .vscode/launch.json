@@ -47,6 +47,14 @@
             "script": "${workspaceFolder}/Tests/RunTests.ps1",
             "args": ["-SectionTag", "Perforce"],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Tests (UnrealEngine)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "UnrealEngine"],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
