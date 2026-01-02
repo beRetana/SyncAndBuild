@@ -15,6 +15,38 @@
             "script": "${workspaceFolder}/Tests/RunTests.ps1",
             "args": ["-Coverage"],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Tests (IniciacionProyecto)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "IniciacionProyecto"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Tests (Configuración)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "Configuracion"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Tests (Logging)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "Logging"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Tests (Perforce)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "Perforce"],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

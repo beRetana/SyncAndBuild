@@ -18,7 +18,6 @@ $script:CONSTANTS = @{
     ConfigKeys = @{
         ProjectName = "project.name"
         ProjectDisplayName = "project.displayName"
-        ProjectAutoDetect = "project.autoDetect"
         EnginePath = "unrealEngine.path"
         EngineVersion = "unrealEngine.version"
         EditorAutoLaunch = "editor.autoLaunch"
@@ -40,13 +39,13 @@ $script:CONSTANTS = @{
 }
 
 # Core Directories used often in the project
-$scriptRoot = $PSScriptRoot
-$configDir = Join-Path $scriptRoot "..\Config"
-$logsDir = Join-Path $scriptRoot "..\Logs"
+$script:scriptRoot = $PSScriptRoot
+$configDir = Join-Path $script:scriptRoot "..\Config"
+$logsDir = Join-Path $script:scriptRoot "..\Logs"
 
 # Create directories if they don't exist
-$null = New-Item -ItemType Directory -Force -Path $configDir
-$null = New-Item -ItemType Directory -Force -Path $logsDir
+New-Item -ItemType Directory -Force -Path $configDir
+New-Item -ItemType Directory -Force -Path $logsDir
 
 # Config files
 $script:configFile = Join-Path $configDir $script:CONSTANTS.FileNames.ConfigFileName
@@ -328,9 +327,10 @@ function Find-UnrealProject {
     
     Write-Log "Searching for .uproject files in: $SearchPath" "VERBOSE"
     
-    # Look for .uproject files 
     $projects = Get-ChildItem -Path $SearchPath -Filter "*.uproject" -Recurse -Depth $script:CONSTANTS.SearchRecursionDepth -ErrorAction SilentlyContinue
     
+    $projects = @($projects)
+
     if ($projects.Count -eq 0) {
         throw [BuildException]::new(
             "No Unreal project (.uproject) found in: $SearchPath",
@@ -344,7 +344,6 @@ function Find-UnrealProject {
         return $projects[0]
     }
     
-    # Multiple projects found - ask user
     Write-Host ""
     Write-Host "Multiple projects found:" -ForegroundColor Yellow
     for ($i = 0; $i -lt $projects.Count; $i++) {
@@ -353,7 +352,8 @@ function Find-UnrealProject {
     Write-Host ""
     
     do {
-        $choice = Read-Host "Select project (1-$($projects.Count))"
+        Write-Host "Select project (1-$($projects.Count)): " -ForegroundColor Cyan
+        $choice = Read-Host
         $index = $choice -as [int]
         
         if ($index -ge 1 -and $index -le $projects.Count) {
@@ -372,35 +372,32 @@ function Initialize-ProjectPaths {
         Initialize project paths based on auto-detection or config
     #>
     
-    # Check if project is configured
     $configuredName = Get-ConfigValue $script:CONSTANTS.ConfigKeys.ProjectName
-    $autoDetect = Get-ConfigValue $script:CONSTANTS.ConfigKeys.ProjectAutoDetect -DefaultValue $true
-    
-    if ($configuredName -and -not $autoDetect) {
-        # Use configured project
+    $scanForProjectDetails = $false
+
+    if ($configuredName) {
         Write-Log "Using configured project: $configuredName" "VERBOSE"
         
-        # Calculate paths assuming standard structure
-        $ToolPath = Blit-ath -Parent $scriptRoot
-        $ToolsPath = Split-Path -Parent $ToolPathSplit-Path -Parent $ToolPath
+        $ToolPath = Split-Path -Parent $script:scriptRoot
+        $ToolsPath = Split-Path -Parent $ToolPath
         $script:projectRoot = Split-Path -Parent $ToolsPath
         $script:projectName = $configuredName
         $script:projectFile = Join-Path $script:projectRoot "$configuredName\$configuredName.uproject"
         
         if (-not (Test-Path $script:projectFile)) {
-            Write-Log "Configured project not found, switching to auto-detect" "WARNING"
-            Set-ConfigValue $script:CONSTANTS.ConfigKeys.ProjectAutoDetect $true
-            $autoDetect = $true
+            Write-Log "Configured project not found, switching to detect for project details" "WARNING"
+            $scanForProjectDetails = $true
+        }
+        else {
+            return
         }
     }
-    
-    if ($autoDetect -or -not $configuredName) {
-        # Auto-detect project
-        Write-Log "Auto-detecting project..." "INFO"
+
+    if ($scanForProjectDetails -or -not $configuredName) {
+        Write-Log "Scanning for project details..." "INFO"
         
-        # Start search from parent of Tools directory
-        $syncAndBuildDir = Split-Path -Parent $scriptRoot
-        $toolsDir = Split-Path -Parent $syncAndBuildDir
+        $ToolPath = Split-Path -Parent $script:scriptRoot
+        $toolsDir = Split-Path -Parent $ToolPath
         $searchRoot = Split-Path -Parent $toolsDir           
         $projectFileObj = Find-UnrealProject -SearchPath $searchRoot
         
@@ -408,20 +405,18 @@ function Initialize-ProjectPaths {
         $script:projectName = $projectFileObj.BaseName
         $script:projectRoot = Split-Path -Parent $projectFileObj.DirectoryName
         
-        # Save to config
-        Set-ConfigValue $PROJECT_NAME_KEY $script:projectName
-        Set-ConfigValue $PROJECT_DISPLAY_NAME_KEY "$script:projectName Project"
+        Set-ConfigValue $script:CONSTANTS.ConfigKeys.ProjectName $script:projectName
+        Set-ConfigValue $script:CONSTANTS.ConfigKeys.ProjectDisplayName "$script:projectName Project"
         
-        Write-Log "Project detected: $script:projectName" "SUCCESS"
+        Write-Log "Project detected: $script:projectName" "VERBOSE"
         Write-Log "Project root: $script:projectRoot" "VERBOSE"
     }
     
-    # Validate project file exists
     if (-not (Test-Path $script:projectFile)) {
         throw [BuildException]::new(
             "Project file not found: $script:projectFile",
             "Project Configuration",
-            "Check the project name in config.json or enable auto-detection"
+            "Check the project name in config.json or move the script to the correct location"
         )
     }
 }
@@ -441,15 +436,9 @@ function Find-UnrealEngine {
     
     $searchPaths = @(
         "C:\Program Files\Epic Games",
-        "D:\Program Files\Epic Games",
-        "E:\Program Files\Epic Games",
         "C:\Epic Games",
-        "D:\Epic Games",
-        "E:\Epic Games",
         "C:\Apps\UE_Engines",
-        "D:\Apps\UE_Engines",
-        "C:\UE",
-        "D:\UE"
+        "C:\UE"
     )
     
     $found = @()
@@ -458,20 +447,20 @@ function Find-UnrealEngine {
         if (Test-Path $basePath) {
             Write-Log "Scanning: $basePath" "VERBOSE"
             
-            # Look for UE installations
             $ueDirs = Get-ChildItem -Path $basePath -Directory -ErrorAction SilentlyContinue | 
-                      Where-Object { $_.Name -match "^(UE|UnrealEngine)[_\s]?[\d\.]+" }
+                      Where-Object { $_.Name -match "^(UE|UnrealEngine)[_\s-]?[\d\.]+" }
             
             foreach ($ueDir in $ueDirs) {
                 $buildBat = Join-Path $ueDir.FullName $script:CONSTANTS.Paths.UnrealBuildBat
                 
                 if (Test-Path $buildBat) {
-                    # Extract version
                     $version = "Unknown"
                     if ($ueDir.Name -match "([\d\.]+)") {
                         $version = $Matches[1]
                     }
-                    
+
+                    if ($found.Path -contains $ueDir.FullName) {continue}
+
                     $found += [PSCustomObject]@{
                         Index = $found.Count + 1
                         Path = $ueDir.FullName
@@ -506,7 +495,6 @@ function Find-UnrealEngine {
         }
         
         if ($choice -eq "B" -or $choice -eq "b") {
-            # Open folder browser
 
             $form = New-Object System.Windows.Forms.Form
             $form.TopMost = $true 
