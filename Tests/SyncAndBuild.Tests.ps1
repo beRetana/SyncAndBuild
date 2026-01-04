@@ -2099,6 +2099,174 @@ Describe "Test-CodeChanges" -Tag "FuncionesTests" {
     }
 }
 
+Describe "Test-ProjectBinariesExist" -Tag "FuncionesTests" {
+
+    BeforeAll {
+        . "$PSScriptRoot\..\Source\sync_and_build.ps1"
+    }
+
+    BeforeEach {
+        $script:projectRoot = "C:\MyProject"
+        $script:projectName = "MyGame"
+
+        Mock Write-Log { }
+    }
+
+    Context "Caso: Binarios existen" {
+
+        It "Retorna true cuando el archivo DLL existe" {
+            Mock Test-Path {
+                param($Path)
+                if ($Path -match "UnrealEditor-MyGame\.dll") {
+                    return $true
+                }
+                return $false
+            }
+
+            $result = Test-ProjectBinariesExist
+
+            $result | Should -Be $true
+        }
+
+        It "Construye la ruta correcta del binario" {
+            $capturedPath = $null
+            Mock Test-Path {
+                param($Path)
+                $script:capturedPath = $Path
+                return $true
+            }
+
+            Test-ProjectBinariesExist
+
+            $script:capturedPath | Should -Be "C:\MyProject\MyGame\Binaries\Win64\UnrealEditor-MyGame.dll"
+        }
+
+        It "Escribe log VERBOSE cuando binario existe" {
+            Mock Test-Path { return $true }
+
+            Test-ProjectBinariesExist
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Checking for project binary" -and
+                $Message -match "UnrealEditor-MyGame\.dll" -and
+                $Message -match "Exists: True" -and
+                $Level -eq "VERBOSE"
+            }
+        }
+    }
+
+    Context "Caso: Binarios no existen" {
+
+        It "Retorna false cuando el archivo DLL no existe" {
+            Mock Test-Path { return $false }
+
+            $result = Test-ProjectBinariesExist
+
+            $result | Should -Be $false
+        }
+
+        It "Escribe log VERBOSE cuando binario no existe" {
+            Mock Test-Path { return $false }
+
+            Test-ProjectBinariesExist
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Checking for project binary" -and
+                $Message -match "UnrealEditor-MyGame\.dll" -and
+                $Message -match "Exists: False" -and
+                $Level -eq "VERBOSE"
+            }
+        }
+    }
+
+    Context "Caso: Diferentes nombres de proyecto" {
+
+        It "Construye ruta correcta con nombre simple" {
+            $script:projectName = "TestGame"
+            $capturedPath = $null
+            Mock Test-Path {
+                param($Path)
+                $script:capturedPath = $Path
+                return $true
+            }
+
+            Test-ProjectBinariesExist
+
+            $script:capturedPath | Should -Match "UnrealEditor-TestGame\.dll"
+        }
+
+        It "Construye ruta correcta con nombre complejo" {
+            $script:projectName = "MyAwesomeGame"
+            $capturedPath = $null
+            Mock Test-Path {
+                param($Path)
+                $script:capturedPath = $Path
+                return $true
+            }
+
+            Test-ProjectBinariesExist
+
+            $script:capturedPath | Should -Match "UnrealEditor-MyAwesomeGame\.dll"
+        }
+
+        It "Usa el projectRoot configurado" {
+            $script:projectRoot = "C:\Projects\GameDev"
+            $capturedPath = $null
+            Mock Test-Path {
+                param($Path)
+                $script:capturedPath = $Path
+                return $true
+            }
+
+            Test-ProjectBinariesExist
+
+            $script:capturedPath | Should -Match "^C:\\Projects\\GameDev\\"
+        }
+    }
+
+    Context "Caso: Verificación de estructura de ruta" {
+
+        It "Incluye carpeta Binaries en la ruta" {
+            $capturedPath = $null
+            Mock Test-Path {
+                param($Path)
+                $script:capturedPath = $Path
+                return $true
+            }
+
+            Test-ProjectBinariesExist
+
+            $script:capturedPath | Should -Match "\\Binaries\\"
+        }
+
+        It "Incluye carpeta Win64 en la ruta" {
+            $capturedPath = $null
+            Mock Test-Path {
+                param($Path)
+                $script:capturedPath = $Path
+                return $true
+            }
+
+            Test-ProjectBinariesExist
+
+            $script:capturedPath | Should -Match "\\Win64\\"
+        }
+
+        It "Usa formato UnrealEditor-[ProjectName].dll" {
+            $capturedPath = $null
+            Mock Test-Path {
+                param($Path)
+                $script:capturedPath = $Path
+                return $true
+            }
+
+            Test-ProjectBinariesExist
+
+            $script:capturedPath | Should -Match "UnrealEditor-.*\.dll$"
+        }
+    }
+}
+
 # =============================================================================
 # TESTS DE UNREAL ENGINE
 # =============================================================================
@@ -3106,7 +3274,797 @@ Describe "Find-UnrealProject" -Tag "UnrealEngine"{
                 $_.Exception.Suggestion | Should -Be "Ensure there is a .uproject in the search path"
             }
         }
-    } 
+    }
+}
+
+# =============================================================================
+# TESTS DE BUILD
+# =============================================================================
+
+Describe "Invoke-ProjectBuild" -Tag "Build" {
+
+    BeforeAll {
+        . "$PSScriptRoot\..\Source\sync_and_build.ps1"
+    }
+
+    BeforeEach {
+        $script:CONSTANTS = @{
+            Paths = @{
+                UnrealBuildBat = "Engine\Build\BatchFiles\Build.bat"
+            }
+            ConfigKeys = @{
+                UseUBTLogging = "UseUBTLogging"
+            }
+            FileNames = @{
+                BuildLogFileName = "Build.log"
+            }
+        }
+
+        $script:projectName = "MyGame"
+        $script:projectFile = "C:\MyProject\MyGame.uproject"
+        $script:logsDir = "C:\Logs"
+
+        Mock Write-Header { }
+        Mock Write-Host { }
+        Mock Write-Log { }
+        Mock Get-ConfigValue {
+            param($Path, $DefaultValue)
+            return $DefaultValue
+        }
+    }
+
+    Context "Caso: Build exitoso (incremental)" {
+
+        It "Retorna true cuando el build termina con ExitCode 0" {
+            Mock Start-Process {
+                return [PSCustomObject]@{
+                    ExitCode = 0
+                }
+            }
+
+            $result = Invoke-ProjectBuild -UERoot "C:\UE_5.3" -CleanBuild:$false
+
+            $result | Should -Be $true
+        }
+
+        It "Construye la ruta correcta del Build.bat" {
+            $capturedFilePath = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList, $NoNewWindow, $Wait, $PassThru)
+                $script:capturedFilePath = $FilePath
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            $script:capturedFilePath | Should -Be "C:\UE_5.3\Engine\Build\BatchFiles\Build.bat"
+        }
+
+        It "Pasa argumentos correctos sin -Clean" {
+            $capturedArgs = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList, $NoNewWindow, $Wait, $PassThru)
+                $script:capturedArgs = $ArgumentList
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            $script:capturedArgs | Should -Contain "MyGameEditor"
+            $script:capturedArgs | Should -Contain "Win64"
+            $script:capturedArgs | Should -Contain "Development"
+            $script:capturedArgs | Should -Contain "`"C:\MyProject\MyGame.uproject`""
+            $script:capturedArgs | Should -Not -Contain "-Clean"
+        }
+
+        It "Ejecuta Start-Process con -Wait y -PassThru" {
+            $capturedWait = $null
+            $capturedPassThru = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList, $NoNewWindow, $Wait, $PassThru)
+                $script:capturedWait = $Wait
+                $script:capturedPassThru = $PassThru
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            $script:capturedWait | Should -Be $true
+            $script:capturedPassThru | Should -Be $true
+        }
+
+        It "Muestra mensaje de build incremental cuando no se usa -CleanBuild" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "Performing incremental build"
+            }
+        }
+    }
+
+    Context "Caso: Build exitoso (clean build)" {
+
+        It "Agrega -Clean a los argumentos cuando se usa -CleanBuild" {
+            $capturedArgs = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList, $NoNewWindow, $Wait, $PassThru)
+                $script:capturedArgs = $ArgumentList
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3" -CleanBuild
+
+            $script:capturedArgs | Should -Contain "-Clean"
+        }
+
+        It "Muestra mensaje de clean build cuando se usa -CleanBuild" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3" -CleanBuild
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "Clean build requested"
+            }
+        }
+
+        It "Retorna true cuando clean build exitoso" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            $result = Invoke-ProjectBuild -UERoot "C:\UE_5.3" -CleanBuild
+
+            $result | Should -Be $true
+        }
+    }
+
+    Context "Caso: Build con UBT logging habilitado" {
+
+        It "Agrega -Log cuando UseUBTLogging es true" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "UseUBTLogging") {
+                    return $true
+                }
+                return $DefaultValue
+            }
+
+            $capturedArgs = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList, $NoNewWindow, $Wait, $PassThru)
+                $script:capturedArgs = $ArgumentList
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            $logArg = $script:capturedArgs | Where-Object { $_ -match '^-Log=' }
+            $logArg | Should -Not -BeNullOrEmpty
+            $logArg | Should -Match 'Build\.log'
+        }
+
+        It "No agrega -Log cuando UseUBTLogging es false" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "UseUBTLogging") {
+                    return $false
+                }
+                return $DefaultValue
+            }
+
+            $capturedArgs = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList, $NoNewWindow, $Wait, $PassThru)
+                $script:capturedArgs = $ArgumentList
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            $logArg = $script:capturedArgs | Where-Object { $_ -match '^-Log=' }
+            $logArg | Should -BeNullOrEmpty
+        }
+
+        It "Escribe log VERBOSE con ruta del build log cuando UBT logging habilitado" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "UseUBTLogging") {
+                    return $true
+                }
+                return $DefaultValue
+            }
+
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Build log will be saved to" -and $Level -eq "VERBOSE"
+            }
+        }
+    }
+
+    Context "Caso: Build fallido" {
+
+        It "Retorna false cuando ExitCode no es 0" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 1 }
+            }
+
+            $result = Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $false
+        }
+
+        It "Escribe log ERROR cuando build falla" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 5 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Build failed" -and
+                $Message -match "Exit code: 5" -and
+                $Level -eq "ERROR"
+            }
+        }
+
+        It "Muestra mensaje BUILD FAILED cuando falla" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 1 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "BUILD FAILED"
+            }
+        }
+
+        It "Muestra mensaje con ruta del log cuando UBT logging habilitado y build falla" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "UseUBTLogging") {
+                    return $true
+                }
+                return $DefaultValue
+            }
+
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 1 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "Check the build log for details"
+            }
+        }
+
+        It "Retorna false para diferentes códigos de error" {
+            $errorCodes = @(1, 2, 5, 10, 127, 255)
+
+            foreach ($code in $errorCodes) {
+                Mock Start-Process {
+                    return [PSCustomObject]@{ ExitCode = $code }
+                }
+
+                $result = Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+                $result | Should -Be $false
+            }
+        }
+    }
+
+    Context "Caso: Excepciones durante el build" {
+
+        It "Retorna false cuando Start-Process lanza excepción" {
+            Mock Start-Process {
+                throw "Process failed to start"
+            }
+
+            $result = Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $false
+        }
+
+        It "Escribe log ERROR cuando hay excepción" {
+            Mock Start-Process {
+                throw "Build.bat not found"
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Build error" -and
+                $Message -match "Build.bat not found" -and
+                $Level -eq "ERROR"
+            }
+        }
+
+        It "Llama Write-DetailedError cuando hay excepción" {
+            Mock Start-Process {
+                throw "Access denied"
+            }
+            Mock Write-DetailedError { }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-DetailedError -ParameterFilter {
+                $Message -match "Build process crashed" -and
+                $Message -match "Access denied" -and
+                $Category -eq "Build" -and
+                $Suggestion -match "Visual Studio Build Tools"
+            }
+        }
+
+        It "Maneja excepción con mensaje vacío" {
+            Mock Start-Process {
+                throw [System.Exception]::new()
+            }
+
+            $result = Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $false
+        }
+    }
+
+    Context "Caso: Mensajes informativos" {
+
+        It "Muestra header BUILDING PROJECT" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Header -ParameterFilter {
+                $Text -eq "BUILDING PROJECT"
+            }
+        }
+
+        It "Muestra tiempo estimado de build" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "Estimated time: 5-15 minutes"
+            }
+        }
+
+        It "Escribe log VERBOSE con comando completo ejecutado" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Executing:.*Build\.bat" -and
+                $Message -match "MyGameEditor" -and
+                $Level -eq "VERBOSE"
+            }
+        }
+
+        It "Muestra BUILD SUCCESSFUL cuando exitoso" {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            Invoke-ProjectBuild -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "BUILD SUCCESSFUL"
+            }
+        }
+    }
+}
+
+# =============================================================================
+# TESTS DE EDITOR
+# =============================================================================
+
+Describe "Start-UnrealEditor" -Tag "Editor" {
+
+    BeforeAll {
+        . "$PSScriptRoot\..\Source\sync_and_build.ps1"
+    }
+
+    BeforeEach {
+        $script:CONSTANTS = @{
+            Paths = @{
+                UnrealEditorExe = "Engine\Binaries\Win64\UnrealEditor.exe"
+            }
+            ConfigKeys = @{
+                EditorAutoLaunch = "EditorAutoLaunch"
+            }
+        }
+
+        $script:projectFile = "C:\MyProject\MyGame.uproject"
+        $script:NoPrompt = $false
+
+        Mock Write-Header { }
+        Mock Write-Host { }
+        Mock Write-Log { }
+        Mock Get-ConfigValue {
+            param($Path, $DefaultValue)
+            return $DefaultValue
+        }
+        Mock Set-ConfigValue { }
+    }
+
+    Context "Caso: Editor no existe" {
+
+        It "Retorna false cuando UnrealEditor.exe no existe" {
+            Mock Test-Path { return $false }
+
+            $result = Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $false
+        }
+
+        It "Escribe log WARNING cuando editor no existe" {
+            Mock Test-Path { return $false }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Editor executable not found" -and
+                $Level -eq "WARNING"
+            }
+        }
+
+        It "Muestra mensaje de advertencia cuando editor no existe" {
+            Mock Test-Path { return $false }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "UnrealEditor.exe not found"
+            }
+        }
+
+        It "Verifica la ruta correcta del ejecutable" {
+            $capturedPath = $null
+            Mock Test-Path {
+                param($Path)
+                $script:capturedPath = $Path
+                return $false
+            }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            $script:capturedPath | Should -Be "C:\UE_5.3\Engine\Binaries\Win64\UnrealEditor.exe"
+        }
+    }
+
+    Context "Caso: Usuario acepta lanzar editor (prompt manual)" {
+
+        It "Retorna true cuando usuario responde Y y lanzamiento exitoso" {
+            Mock Test-Path { return $true }
+            Mock Read-Host {
+                # Primera llamada: Launch? -> Y
+                # Segunda llamada: Save? -> N
+                if ($script:readHostCallCount -eq $null) { $script:readHostCallCount = 0 }
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }
+                return "N"
+            }
+            Mock Start-Process { }
+
+            $result = Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $true
+        }
+
+        It "Lanza el editor con la ruta correcta cuando usuario acepta" {
+            Mock Test-Path { return $true }
+            $script:readHostCallCount = 0
+            Mock Read-Host {
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }
+                return "N"
+            }
+            Mock Join-Path {
+                param($Path, $ChildPath)
+                return "$Path\$ChildPath"
+            }
+            $capturedFilePath = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                $script:capturedFilePath = $FilePath
+            }
+
+            $result = Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $true
+
+            Should -Invoke Start-Process -Times 1
+
+            $script:capturedFilePath | Should -Be "C:\UE_5.3\Engine\Binaries\Win64\UnrealEditor.exe"
+        }
+
+        It "Pasa el archivo de proyecto como argumento cuando lanza editor" {
+            Mock Test-Path { return $true }
+            $script:readHostCallCount = 0
+            Mock Read-Host {
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }
+                return "N"
+            }
+            $capturedArgs = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                $script:capturedArgs = $ArgumentList
+            }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            $script:capturedArgs | Should -Match "MyGame\.uproject"
+        }
+
+        It "Acepta respuesta en minúscula (y)" {
+            Mock Test-Path { return $true }
+            $script:readHostCallCount = 0
+            Mock Read-Host {
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "y" }
+                return "n"
+            }
+            Mock Start-Process { }
+
+            $result = Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $true
+            Should -Invoke Start-Process -Times 1
+        }
+    }
+
+    Context "Caso: Usuario rechaza lanzar editor" {
+
+        It "Retorna true cuando usuario responde N (no es error)" {
+            Mock Test-Path { return $true }
+            Mock Read-Host { return "N" }
+
+            $result = Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $true
+        }
+
+        It "No lanza el editor cuando usuario responde N" {
+            Mock Test-Path { return $true }
+            Mock Read-Host { return "N" }
+            Mock Start-Process { }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Start-Process -Times 0
+        }
+
+        It "Escribe log INFO cuando usuario rechaza lanzar" {
+            Mock Test-Path { return $true }
+            Mock Read-Host { return "N" }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "User chose not to launch editor" -and
+                $Level -eq "INFO"
+            }
+        }
+
+        It "Acepta respuesta en minúscula (n)" {
+            Mock Test-Path { return $true }
+            Mock Read-Host { return "n" }
+            Mock Start-Process { }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Start-Process -Times 0
+        }
+    }
+
+    Context "Caso: AutoLaunch habilitado" {
+
+        It "Lanza automáticamente cuando EditorAutoLaunch es true" {
+            Mock Test-Path { return $true }
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "EditorAutoLaunch") {
+                    return $true
+                }
+                return $DefaultValue
+            }
+            Mock Read-Host { return "N" }  # Save response
+            Mock Start-Process { }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Start-Process -Times 1
+        }
+
+        It "No pregunta 'Launch Editor?' cuando autoLaunch habilitado" {
+            Mock Test-Path { return $true }
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "EditorAutoLaunch") {
+                    return $true
+                }
+                return $DefaultValue
+            }
+            Mock Read-Host { return "N" }
+            Mock Start-Process { }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            # Solo debe preguntar una vez: "Save response?"
+            Should -Invoke Read-Host -Times 1
+        }
+    }
+
+    Context "Caso: Guardar preferencia de usuario" {
+
+        It "Guarda EditorAutoLaunch cuando usuario responde Y a 'Save Response'" {
+            Mock Test-Path { return $true }
+            Mock Read-Host {
+                if ($script:readHostCallCount -eq $null) { $script:readHostCallCount = 0 }
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }  # Launch
+                return "Y"  # Save
+            }
+            Mock Start-Process { }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Set-ConfigValue -ParameterFilter {
+                $Path -eq "EditorAutoLaunch" -and $Value -eq $true
+            }
+        }
+
+        It "No guarda preferencia cuando usuario responde N a 'Save Response'" {
+            Mock Test-Path { return $true }
+            Mock Read-Host {
+                if ($script:readHostCallCount -eq $null) { $script:readHostCallCount = 0 }
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }  # Launch
+                return "N"  # Don't save
+            }
+            Mock Start-Process { }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Set-ConfigValue -Times 0
+        }
+
+        It "Acepta respuesta en minúscula (y) para guardar" {
+            Mock Test-Path { return $true }
+            Mock Read-Host {
+                if ($script:readHostCallCount -eq $null) { $script:readHostCallCount = 0 }
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }  # Launch
+                return "y"  # Save (lowercase)
+            }
+            Mock Start-Process { }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Set-ConfigValue -Times 1
+        }
+    }
+
+    Context "Caso: Excepción al lanzar editor" {
+
+        It "Retorna false cuando Start-Process lanza excepción" {
+            Mock Test-Path { return $true }
+            $script:readHostCallCount = 0
+            Mock Read-Host {
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }
+                return "N"
+            }
+            Mock Start-Process {
+                throw "File not found"
+            }
+
+            $result = Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            $result | Should -Be $false
+        }
+
+        It "Escribe log ERROR cuando falla el lanzamiento" {
+            Mock Test-Path { return $true }
+            $script:readHostCallCount = 0
+            Mock Read-Host {
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }
+                return "N"
+            }
+            Mock Start-Process {
+                throw "Access denied"
+            }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Failed to launch editor" -and
+                $Message -match "Access denied" -and
+                $Level -eq "ERROR"
+            }
+        }
+
+        It "Muestra mensaje de error cuando falla el lanzamiento" {
+            Mock Test-Path { return $true }
+            $script:readHostCallCount = 0
+            Mock Read-Host {
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }
+                return "N"
+            }
+            Mock Start-Process {
+                throw "Process error"
+            }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "Failed to launch editor" -and
+                $Object -match "Process error"
+            }
+        }
+    }
+
+    Context "Caso: Mensajes informativos" {
+
+        It "Muestra header READY TO LAUNCH" {
+            Mock Test-Path { return $false }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Header -ParameterFilter {
+                $Text -eq "READY TO LAUNCH"
+            }
+        }
+
+        It "Muestra mensaje de éxito cuando lanza" {
+            Mock Test-Path { return $true }
+            $script:readHostCallCount = 0
+            Mock Read-Host {
+                $script:readHostCallCount++
+                if ($script:readHostCallCount -eq 1) { return "Y" }
+                return "N"
+            }
+            Mock Start-Process { }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "Editor launched successfully"
+            }
+        }
+
+        It "Muestra mensaje 'Skipping editor launch' cuando usuario rechaza" {
+            Mock Test-Path { return $true }
+            Mock Read-Host { return "N" }
+
+            Start-UnrealEditor -UERoot "C:\UE_5.3"
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "Skipping editor launch"
+            }
+        }
+    }
 }
 
 # =============================================================================
@@ -3359,5 +4317,409 @@ Affected files ...
         
         $syncResult | Should -Be $true
         $hasCodeChanges | Should -Be $true
+    }
+}
+
+# =============================================================================
+# TESTS DE MAIN FUNCTION
+# =============================================================================
+
+Describe "Main" -Tag "MainFunc" {
+
+    BeforeAll {
+        . "$PSScriptRoot\..\Source\sync_and_build.ps1"
+    }
+
+    BeforeEach {
+        $script:projectName = "MyGame"
+        $script:projectRoot = "C:\MyProject"
+        $script:projectFile = "C:\MyProject\MyGame.uproject"
+        $script:logFile = "C:\Logs\build.log"
+        $script:NoPrompt = $false
+
+        Mock Initialize-Log { }
+        Mock Write-Header { }
+        Mock Write-Host { }
+        Mock Write-Log { }
+        Mock Initialize-ProjectPaths { }
+        Mock Get-UnrealEngineRoot { return "C:\UE_5.3" }
+        Mock Test-UnrealEngineValid { }
+        Mock Test-ProjectBinariesExist { return $true }
+        Mock Sync-FromPerforce { return $true }
+        Mock Get-LatestHaveChangelist { return 12345 }
+        Mock Test-CodeChanges { return $false }
+        Mock Invoke-ProjectBuild { return $true }
+        Mock Start-UnrealEditor { return $true }
+        Mock Get-ConfigValue { return 0 }
+        Mock Set-ConfigValue { }
+        Mock Out-File { }
+        Mock Get-Date { return [DateTime]::new(2024, 12, 25, 10, 30, 0) }
+        Mock Write-DetailedError { }
+    }
+
+    Context "Caso: Flujo exitoso sin cambios de código" {
+
+        It "Completa exitosamente cuando no hay cambios de código" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12345 }
+                return $DefaultValue
+            }
+
+            { Main $false $false $false $false} | Should -Not -Throw
+        }
+
+        It "Llama Initialize-ProjectPaths al inicio" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Initialize-ProjectPaths -Times 1
+        }
+
+        It "Obtiene y valida UE Root" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Get-UnrealEngineRoot -Times 1
+            Should -Invoke Test-UnrealEngineValid -Times 1
+        }
+
+        It "Verifica existencia de binarios" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Test-ProjectBinariesExist -Times 1
+        }
+
+        It "Sincroniza desde Perforce cuando no se usa -SkipSync" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Sync-FromPerforce -ParameterFilter { -not $SkipSync } -Times 1
+        }
+
+        It "No construye cuando CL actual ya fue construido" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Invoke-ProjectBuild -Times 0
+        }
+
+        It "Intenta lanzar el editor al final" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Start-UnrealEditor -Times 1
+        }
+    }
+
+    Context "Caso: Build inicial requerido" {
+
+        It "Ejecuta build inicial cuando binarios no existen" {
+            Mock Test-ProjectBinariesExist { return $false }
+
+            Main
+
+            Should -Invoke Invoke-ProjectBuild -Times 1
+        }
+
+        It "Muestra mensaje de build inicial requerido" {
+            Mock Test-ProjectBinariesExist { return $false }
+
+            Main
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "INITIAL BUILD REQUIRED" -or $Object -match "Project binaries not found"
+            }
+        }
+    }
+
+    Context "Caso: Cambios de código detectados" {
+
+        It "Construye cuando hay cambios de código" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12340 }
+                return $DefaultValue
+            }
+            Mock Test-CodeChanges { return $true }
+
+            Main
+
+            Should -Invoke Invoke-ProjectBuild -Times 1
+        }
+
+        It "Guarda el CL después de build exitoso" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -Match "lastBuiltCl") { return 12340 }
+                return $DefaultValue
+            }
+            Mock Test-CodeChanges { return $true }
+
+            Main
+
+            Should -Invoke Set-ConfigValue -ParameterFilter {
+                $Path -Match "lastBuiltCl" -and $Value -eq 12345
+            }
+        }
+
+        It "Verifica cambios de código entre CLs" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -Match "lastBuiltCl") { return 12340 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Test-CodeChanges -ParameterFilter {
+                $Changelist -eq 12345 -and $FromCL -eq 12340
+            }
+        }
+    }
+
+    Context "Caso: Sin cambios de código pero CL diferente" {
+
+        It "No construye cuando no hay cambios de código" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltChangelist") { return 12340 }
+                return $DefaultValue
+            }
+            Mock Test-CodeChanges { return $false }
+
+            Main
+
+            Should -Invoke Invoke-ProjectBuild -Times 0
+        }
+
+        It "Actualiza lastBuiltCL aunque no se construya" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -match "lastBuiltCL") { return 12340 }
+                return $DefaultValue
+            }
+            Mock Test-CodeChanges { return $false }
+
+            Main
+
+            Should -Invoke Set-ConfigValue -ParameterFilter {
+                $Path -match "lastBuiltCL" -and $Value -eq 12345
+            }
+        }
+    }
+
+    Context "Caso: Parámetro -ForceBuild" {
+
+        It "Construye aunque no haya cambios cuando se usa -ForceBuild" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltCL") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main -ForceBuild
+
+            Should -Invoke Invoke-ProjectBuild -Times 1
+        }
+
+        It "No verifica cambios de código cuando se usa -ForceBuild" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltCL") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main -ForceBuild
+
+            Should -Invoke Test-CodeChanges -Times 0
+        }
+    }
+
+    Context "Caso: Parámetro -Clean" {
+
+        It "Pasa -CleanBuild al Invoke-ProjectBuild cuando se usa -Clean" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltCL") { return 12340 }
+                return $DefaultValue
+            }
+            Mock Test-CodeChanges { return $true }
+
+            Main -Clean
+
+            Should -Invoke Invoke-ProjectBuild -ParameterFilter { $CleanBuild -eq $true }
+        }
+
+        It "Fuerza build aunque no haya cambios cuando se usa -Clean" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "lastBuiltCL") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main -Clean
+
+            Should -Invoke Invoke-ProjectBuild -Times 1
+        }
+    }
+
+    Context "Caso: Parámetro -SkipSync" {
+
+        It "Pasa -SkipSync a Sync-FromPerforce" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltCL") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main -SkipSync
+
+            Should -Invoke Sync-FromPerforce -ParameterFilter { $SkipSync -eq $true }
+        }
+    }
+
+    Context "Caso: Errores y manejo de excepciones" {
+
+        It "Captura excepciones genéricas y muestra SCRIPT FAILED" {
+            Mock Initialize-ProjectPaths {
+                throw "Generic error"
+            }
+
+            Main
+
+            Should -Invoke Write-Host -ParameterFilter { $Object -match "SCRIPT FAILED" }
+        }
+
+        It "Escribe log ERROR cuando hay excepción" {
+            Mock Initialize-ProjectPaths {
+                throw "Test error"
+            }
+
+            Main
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Script failed" -and $Level -eq "ERROR"
+            }
+        }
+    }
+
+    Context "Caso: No se puede determinar changelist" {
+
+        It "No construye si no hay CL y no hay -ForceBuild" {
+            Mock Get-LatestHaveChangelist { throw "Cannot determine CL" }
+
+            Main
+
+            Should -Invoke Invoke-ProjectBuild -Times 0
+        }
+
+        It "Construye si no hay CL pero hay -ForceBuild" {
+            Mock Get-LatestHaveChangelist { throw "Cannot determine CL" }
+
+            Main -ForceBuild:$true
+
+            Should -Invoke Invoke-ProjectBuild -Times 1
+        }
+
+        It "Muestra advertencia cuando no puede determinar CL" {
+            Mock Get-LatestHaveChangelist { throw "Cannot determine CL" }
+
+            Main
+
+            Should -Invoke Write-Host -ParameterFilter {
+                $Object -match "Cannot determine CL"
+            }
+        }
+    }
+
+    Context "Caso: Mensajes y logs" {
+
+        It "Muestra header de inicio" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltCL") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Write-Header -ParameterFilter {
+                $Text -match "UNREAL ENGINE - SYNC AND BUILD TOOL"
+            }
+        }
+
+        It "Muestra header de completado" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltCL") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Write-Header -ParameterFilter {
+                $Text -eq "COMPLETE"
+            }
+        }
+
+        It "Escribe log SUCCESS al completar" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltCL") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Write-Log -ParameterFilter {
+                $Message -match "Script completed successfully" -and $Level -eq "SUCCESS"
+            }
+        }
+
+        It "Escribe footer al archivo de log" {
+            Mock Get-ConfigValue {
+                param($Path, $DefaultValue)
+                if ($Path -eq "LastBuiltCL") { return 12345 }
+                return $DefaultValue
+            }
+
+            Main
+
+            Should -Invoke Out-File -ParameterFilter {
+                $FilePath -match "build\.log" -and $Append -eq $true
+            }
+        }
     }
 }

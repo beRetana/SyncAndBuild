@@ -953,7 +953,7 @@ function Invoke-ProjectBuild {
     $buildStartTime = Get-Date
     
     try {
-        $process = Start-Process -FilePath $buildBat `
+        $process = Start-Process  -FilePath $buildBat `
                                   -ArgumentList $buildArgs `
                                   -NoNewWindow `
                                   -Wait `
@@ -970,7 +970,7 @@ function Invoke-ProjectBuild {
             Write-Host "Build time: $($buildDuration.ToString('mm\:ss'))" -ForegroundColor Cyan
             Write-Host ""
             
-            Write-Log "Build succeeded in $($buildDuration.TotalSeconds) seconds" "SUCCESS"
+            Write-Log "Build succeeded in $($buildDuration.TotalSeconds) seconds" "INFO"
             
             return $true
         } else {
@@ -989,9 +989,10 @@ function Invoke-ProjectBuild {
         }
         
     } catch {
-        Write-Log "Build error: $($_.Exception.Message)" "ERROR"
+        $Message = $_.Exception.Message
+        Write-Log "Build error: $Message" "ERROR"
         Write-DetailedError `
-            -Message "Build process crashed: $($_.Exception.Message)" `
+            -Message "Build process crashed: $Message" `
             -Category "Build" `
             -Suggestion "Check that Visual Studio Build Tools are installed and UE path is correct"
         return $false
@@ -1037,16 +1038,13 @@ function Start-UnrealEditor {
     # Check if auto-launch is enabled
     $autoLaunch = Get-ConfigValue $script:CONSTANTS.ConfigKeys.EditorAutoLaunch -DefaultValue $false
     
-    $launch = $false
-    if ($NoPrompt -or $autoLaunch) {
-        $launch = $true
-    } else {
+    if (-not $autoLaunch){
         Write-Host "Launch Unreal Editor now? (Y/N): " -NoNewline -ForegroundColor Yellow
         $response = Read-Host
         $launch = $response -eq "Y" -or $response -eq "y"
     }
     
-    if ($launch) {
+    if ($launch -or $autoLaunch) {
         Write-Host ""
         Write-Host "Save Response for future operations? (Y/N): " -NoNewline -ForegroundColor Yellow
         $response = Read-Host
@@ -1065,7 +1063,7 @@ function Start-UnrealEditor {
             Write-Host "It may take a minute to open." -ForegroundColor Gray
             Write-Host ""
             
-            Write-Log "Editor launched successfully" "SUCCESS"
+            Write-Log "Editor launched successfully" "INFO"
             return $true
             
         } catch {
@@ -1119,12 +1117,10 @@ function Main
         - Real-time progress feedback
     #>
 
-
     param(
         [switch]$SkipSync = $false,
         [switch]$Clean = $false,
         [switch]$ForceBuild = $false,
-        [switch]$NoPrompt = $false,
         [switch]$Verbose = $false
     )
 
@@ -1162,7 +1158,7 @@ function Main
             Write-Host "This will take 10-30 minutes depending on your hardware." -ForegroundColor Yellow
             Write-Host ""
             
-            if (-not (Build-Project -UERoot:$ueRoot -CleanBuild:$Clean)) {
+            if (-not (Invoke-ProjectBuild -UERoot:$ueRoot -CleanBuild:$Clean)) {
                 throw "Initial build failed"
             }
             
@@ -1176,8 +1172,14 @@ function Main
     
         # Check for code changes and build if needed
         Write-Header "STEP 2: CHECKING FOR CODE CHANGES"
-        
-        $currentCL = Get-LatestHaveChangelist
+        try{
+            $currentCL = Get-LatestHaveChangelist
+        }
+        catch {
+            if (-not $ForceBuild) { throw $_.Exception.Message }
+            $currentCL = $null
+        }
+
         $needsBuild = $false
     
         if (-not $currentCL) {
@@ -1191,7 +1193,7 @@ function Main
             Write-Host "Current changelist: $currentCL" -ForegroundColor Cyan
             
             # Check if we already built this CL
-            $lastBuiltCL = Get-ConfigValue $BUILD_LASTCL_KEY -DefaultValue 0
+            $lastBuiltCL = Get-ConfigValue $script:CONSTANTS.ConfigKeys.LastBuiltCL -DefaultValue 0
             Write-Host "Last built changelist: $lastBuiltCL" -ForegroundColor Gray
             Write-Host ""
             
@@ -1218,11 +1220,11 @@ function Main
                     Write-Log "No code changes detected" "INFO"
                     
                     # Update tracker even though we didn't build
-                    Set-ConfigValue $BUILD_LASTCL_KEY $currentCL
+                    Set-ConfigValue $script:CONSTANTS.ConfigKeys.lastBuiltCL $currentCL
                 }
             } else {
                 Write-Host "Project already built for this changelist" -ForegroundColor Green
-                Write-Log "Already built CL $currentCL" "SUCCESS"
+                Write-Log "Already built CL $currentCL" "INFO"
             }
         }
     
@@ -1230,10 +1232,10 @@ function Main
         
         # Build if needed
         if ($needsBuild) {
-            if (Build-Project -UERoot $ueRoot -CleanBuild:$Clean) {
+            if (Invoke-ProjectBuild -UERoot $ueRoot -CleanBuild:$Clean) {
                 # Save the changelist we just built
                 if ($currentCL) {
-                    Set-ConfigValue $BUILD_LASTCL_KEY $currentCL
+                    Set-ConfigValue $script:CONSTANTS.ConfigKeys.lastBuiltCL $currentCL
                     Write-Log "Updated last built CL to: $currentCL" "INFO"
                 }
             } else {
@@ -1265,7 +1267,7 @@ Finished: $(Get-Date)
         
         Write-Log "Script completed successfully" "SUCCESS"
         
-        exit 0
+        return $true
     
     } 
     catch [BuildException] 
@@ -1276,13 +1278,16 @@ Finished: $(Get-Date)
         Write-Host "SCRIPT FAILED" -ForegroundColor Red
         Write-Host "==========================================" -ForegroundColor Red
         Write-Host ""
-        Write-DetailedError -Message $_.Message -Category $_.Category -Suggestion $_.Suggestion
+        Write-DetailedError `
+            -Message $_.Exception.Message `
+            -Category $_.Exception.Category `
+            -Suggestion $_.Suggestion
         Write-Host "Log file: $logFile" -ForegroundColor Yellow
         Write-Host ""
         
-        Write-Log "Script failed: $($_.Message)" "ERROR"
+        Write-Log "Script failed: $($_.Exception.Message)" "ERROR"
         
-        exit 1
+        return $false
     
     } 
     catch 
@@ -1303,6 +1308,6 @@ Finished: $(Get-Date)
         
         Write-Log "Script failed with unhandled exception: $($_.Exception.Message)" "ERROR"
         
-        exit 1
+        return $false
     }
 }

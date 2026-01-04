@@ -55,6 +55,39 @@
             "script": "${workspaceFolder}/Tests/RunTests.ps1",
             "args": ["-SectionTag", "UnrealEngine"],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Tests (Build)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "Build"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Tests (FuncionesTests)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "FuncionesTests"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Tests (Editor)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "Editor"],
+            "cwd": "${workspaceFolder}"
+        }
+        ,
+        {
+            "name": "Run Tests (MainFunc)",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/Tests/RunTests.ps1",
+            "args": ["-SectionTag", "MainFunc"],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
