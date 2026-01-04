@@ -1045,15 +1045,18 @@ function Start-UnrealEditor {
     }
     
     if ($launch -or $autoLaunch) {
-        Write-Host ""
-        Write-Host "Save Response for future operations? (Y/N): " -NoNewline -ForegroundColor Yellow
-        $response = Read-Host
-        
-        if ($response -eq "Y" -or $response -eq "y")
-        {
-            Set-ConfigValue $script:CONSTANTS.ConfigKeys.EditorAutoLaunch $true
-        }
 
+        if (-not $autoLaunch){
+            Write-Host ""
+            Write-Host "Save Response for future operations? (Y/N): " -NoNewline -ForegroundColor Yellow
+            $response = Read-Host
+            
+            if ($response -eq "Y" -or $response -eq "y")
+            {
+                Set-ConfigValue $script:CONSTANTS.ConfigKeys.EditorAutoLaunch $true
+            }
+        }
+        
         Write-Host "Launching editor..." -ForegroundColor Cyan
         
         try {
