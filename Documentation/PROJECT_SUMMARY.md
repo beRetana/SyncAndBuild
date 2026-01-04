@@ -217,20 +217,20 @@ function Test-PerforceEnvironment {
 
 ### Build Times Comparison
 
-| Scenario | v1.0 | v2.0 | Improvement |
-|----------|------|------|-------------|
-| Skip build (no changes) | 30s | 10s | **67% faster** |
-| Incremental (1-5 files) | 15 min | 7 min | **53% faster** |
-| Incremental (large) | 25 min | 12 min | **52% faster** |
-| Clean build | 40 min | 20 min | **50% faster** |
+| Scenario                  | v1.0      | v2.0      | Improvement    |
+|---------------------------|-----------|-----------|----------------|
+| Skip build (no changes)   | 30s       | 10s       | **67% faster** |
+| Incremental (1-5 files)   | 15 min    | 7 min     | **53% faster** |
+| Incremental (large)       | 25 min    | 12 min    | **52% faster** |
+| Clean build               | 40 min    | 20 min    | **50% faster** |
 
 ### Resource Usage
 
-| Metric | v1.0 | v2.0 | Improvement |
-|--------|------|------|-------------|
-| Memory overhead | 200-500 MB | 50-100 MB | **75% less** |
-| Disk I/O | Very High | Low | **90% less** |
-| CPU blocking | Frequent | None | **100% better** |
+| Metric            | v1.0          | v2.0      | Improvement       |
+|-------------------|---------------|-----------|-------------------|
+| Memory overhead   | 200-500 MB    | 50-100 MB | **75% less**      |
+| Disk I/O          | Very High     | Low       | **90% less**      |
+| CPU blocking      | Frequent      | None      | **100% better**   |
 
 ### Why v2.0 is Faster
 
@@ -445,41 +445,6 @@ Right-click in P4V → Custom Tools → Auto Build
    - Share P4V tool configurations
    - Document build flags used
 
----
-
-## Future Roadmap
-
-### Planned Features
-
-#### v2.1 (Next Release)
-- [ ] Build time statistics and trends
-- [ ] Pre-build validation checks
-- [ ] Smart file timestamp detection
-- [ ] Build cache utilization
-- [ ] Parallel UBT support
-
-#### v2.2
-- [ ] Distributed build support (IncrediBuild/FASTBuild)
-- [ ] Multiple build configurations
-- [ ] Build profiles (Debug/Development/Shipping)
-- [ ] Notification on build completion (sound/toast)
-
-#### v3.0 (Future)
-- [ ] GUI configuration tool
-- [ ] Web dashboard for team build status
-- [ ] CI/CD pipeline integration
-- [ ] Build artifact management
-- [ ] Remote build support
-
-### Community Requests
-- Cross-platform support (Mac/Linux)
-- Git integration
-- Multiple project workspace support
-- Build distribution across network
-- Integration with other tools (Rider, CLion)
-
----
-
 ## Support & Contributing
 
 ### Getting Help
@@ -499,8 +464,6 @@ Right-click in P4V → Custom Tools → Auto Build
    - Logs/last_build.log
 
 4. **Contact:**
-   - Project maintainer
-   - Team lead
    - Tools programmer
 
 ### Reporting Issues
@@ -510,8 +473,6 @@ Include:
 - Log files (last_run.log, last_build.log)
 - Config file (config.json, remove sensitive info)
 - P4 environment (`p4 info`, `p4 set`)
-- Steps to reproduce
-- What you've already tried
 
 ### Contributing
 
@@ -545,25 +506,6 @@ This tool is provided as-is for use in Unreal Engine development projects.
 - Unreal Engine team for UBT
 - Perforce team for P4
 - PowerShell community
-- All users who reported issues
-
----
-
-## Statistics
-
-### Code Metrics
-- **Lines of PowerShell:** 1,100+
-- **Functions:** 25+
-- **Error types:** 10+
-- **Config options:** 15+
-- **Documentation pages:** 1,500+ lines
-
-### Improvements Over v1.0
-- **Build speed:** +50-70%
-- **Sync reliability:** +80%
-- **Code quality:** +90%
-- **Error handling:** +95%
-- **Documentation:** +300%
 
 ---
 
@@ -585,6 +527,6 @@ The tool transforms a multi-step workflow (sync → check → build → launch) 
 
 ---
 
-*Last updated: 2024-12-23*
+*Last updated: 2026-01-03*
 *Version: 2.0*
 *Status: Production Ready*

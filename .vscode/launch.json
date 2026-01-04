@@ -79,8 +79,7 @@
             "script": "${workspaceFolder}/Tests/RunTests.ps1",
             "args": ["-SectionTag", "Editor"],
             "cwd": "${workspaceFolder}"
-        }
-        ,
+        },
         {
             "name": "Run Tests (MainFunc)",
             "type": "PowerShell",
