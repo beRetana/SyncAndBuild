@@ -884,7 +884,7 @@ function Test-CodeChanges {
             Write-Log "Describing CL $clNum" "VERBOSE"
 
             $description = p4 describe -s $clNum 2>&1 | Out-String
-            Write-Log "CL $clNum description: `n$description"
+            Write-Host "CL $clNum description: `n$description"
             foreach ($ext in $codeExtensions)
             {
                 $pattern = [regex]::Escape($ext) + "#\d+"

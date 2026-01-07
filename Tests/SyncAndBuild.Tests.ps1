@@ -1906,6 +1906,7 @@ Describe "Test-CodeChanges" -Tag "FuncionesTests" {
         Mock Write-Log {}
         Mock Push-Location {}
         Mock Pop-Location {}
+        Mock Write-Host {}
 
         Mock p4 {
             param([Parameter(ValueFromRemainingArguments)]$Arguments)
