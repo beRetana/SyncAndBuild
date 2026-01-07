@@ -841,14 +841,29 @@ function Test-CodeChanges {
         [int]$Changelist,
         [int]$FromCL = $null
     )
-    
+
     try {
-        if ($FromCL) 
+        # Change to project root for p4 commands
+        Push-Location $script:projectRoot
+
+        if ($FromCL)
         {
             Write-Log "Checking for code changes between CL $FromCL and CL $Changelist" "VERBOSE"
-            $changes = p4 changes "...@$FromCL,$Changelist" 2>&1
-        } 
-        else 
+            # Use depot syntax to search in submitted changelists (not just #have)
+            # Search submitted changelists in range, excluding FromCL
+            $changesOutput = p4 changes -m 100 "//...@>$FromCL,@<=$Changelist" 2>&1
+
+            # Filter out error records and keep only string output
+            $changes = @($changesOutput | Where-Object { $_ -is [String] -and $_.Trim() -ne "" })
+
+            Write-Log "p4 changes returned $($changes.Count) changelist(s)" "VERBOSE"
+            if ($changes.Count -eq 0) {
+                Write-Log "No changelists found in range >$FromCL to <=$Changelist" "VERBOSE"
+                Pop-Location
+                return $false
+            }
+        }
+        else
         {
             Write-Log "Checking for code changes in CL $Changelist" "VERBOSE"
             $changes = @($Changelist)
@@ -857,23 +872,23 @@ function Test-CodeChanges {
         $codeExtensions = Get-ConfigValue $script:CONSTANTS.ConfigKeys.PerforceFileExtentions @(".cpp", ".h")
         $foundChanges = $false
 
-        foreach ($cl in $changes) 
+        foreach ($cl in $changes)
         {
             $clNum = $cl
 
-            if ($cl -match "Change (\d+)") 
+            if ($cl -match "Change (\d+)")
             {
                 $clNum = [int]$Matches[1]
             }
-            
+
             Write-Log "Describing CL $clNum" "VERBOSE"
 
             $description = p4 describe -s $clNum 2>&1 | Out-String
             Write-Log "CL $clNum description: `n$description"
-            foreach ($ext in $codeExtensions) 
+            foreach ($ext in $codeExtensions)
             {
                 $pattern = [regex]::Escape($ext) + "#\d+"
-                if ($description -match $pattern) 
+                if ($description -match $pattern)
                 {
                     Write-Log "Found code changes in CL $clNum (matched: $ext)" "VERBOSE"
                     $foundChanges = $true
@@ -885,12 +900,14 @@ function Test-CodeChanges {
         {
             Write-Log "No code changes detected" "VERBOSE"
         }
-        
+
+        Pop-Location
         return $foundChanges
-        
+
     } catch {
         $Message = $_.Exception.Message
         Write-Log "Could not check for code changes: $Message" "WARNING"
+        Pop-Location
         return $true
     }
 }

@@ -1896,20 +1896,22 @@ Describe "Test-CodeChanges" -Tag "FuncionesTests" {
         # Mock config con extensiones de código
         Mock Get-ConfigValue {
             param($Path, $DefaultValue)
-            
+
             if ($Path -eq "CodeExtensions") {
                 return @('.cpp', '.h', '.build.cs', '.cs')
             }
             return $DefaultValue
         }
-        
+
         Mock Write-Log {}
+        Mock Push-Location {}
+        Mock Pop-Location {}
 
         Mock p4 {
             param([Parameter(ValueFromRemainingArguments)]$Arguments)
-            
+
             $cmd = $Arguments[0]
-            
+
             switch ($cmd) {
                 'describe' {
                     $clNum = $Arguments[2]
@@ -1920,7 +1922,7 @@ Describe "Test-CodeChanges" -Tag "FuncionesTests" {
                         12340 {
                             return @(
                                "Change 12343 on 2024/12/20 by user@workspace
-                                                        
+
                                 Fixed player movement bug
 
                             Affected files ...
@@ -1934,7 +1936,7 @@ Describe "Test-CodeChanges" -Tag "FuncionesTests" {
                         12345 {
                             return @("
                             Change 12345 on 2024/12/25 by user@workspace
-                                                        
+
                                 Fixed player movement bug
 
                             Affected files ...
@@ -1964,23 +1966,42 @@ Describe "Test-CodeChanges" -Tag "FuncionesTests" {
                 'changes' {
                     $global:LASTEXITCODE = 0
 
-                    $startingCL = $Arguments[1]
+                    # New format: p4 changes -m 100 "//...@>FromCL,@<=ToCL"
+                    # Arguments will be: ['changes', '-m', '100', '//...@>12340,@<=12341']
+                    $pathSpec = if ($Arguments.Count -ge 4) { $Arguments[3] } else { $Arguments[1] }
 
-                    if ($startingCL -eq "...@12340,12341") {
+                    # Handle new depot syntax //...@>X,@<=Y
+                    if ($pathSpec -match "//\.\.\.@>(\d+),@<=(\d+)") {
+                        $fromCL = [int]$Matches[1]
+                        $toCL = [int]$Matches[2]
+
+                        # Return only CLs in range (excluding fromCL)
+                        if ($fromCL -eq 12340 -and $toCL -eq 12341) {
+                            return @("Change 12341 on 2024/12/21 by user@workspace")
+                        }
+                        elseif ($fromCL -eq 12343 -and $toCL -eq 12345) {
+                            return @(
+                                "Change 12345 on 2024/12/25 by user@workspace",
+                                "Change 12344 on 2024/12/24 by user@workspace"
+                            )
+                        }
+                    }
+                    # Handle old syntax for backward compatibility
+                    elseif ($pathSpec -eq "...@12340,12341") {
                         return @(
                             "Change 12341 on 2024/12/21 by user@workspace",
                             "Change 12340 on 2024/12/20 by user@workspace"
                         )
                     }
-                    else {
-                        return @(
-                            "Change 12345 on 2024/12/25 by user@workspace",
-                            "Change 12344 on 2024/12/24 by user@workspace",
-                            "Change 12343 on 2024/12/23 by user@workspace"
-                        )
-                    }
+
+                    # Default fallback
+                    return @(
+                        "Change 12345 on 2024/12/25 by user@workspace",
+                        "Change 12344 on 2024/12/24 by user@workspace",
+                        "Change 12343 on 2024/12/23 by user@workspace"
+                    )
                 }
-                
+
                 default {
                     $global:LASTEXITCODE = 0
                     return @()
@@ -3909,8 +3930,8 @@ Describe "Start-UnrealEditor" -Tag "Editor" {
 
             Start-UnrealEditor -UERoot "C:\UE_5.3"
 
-            # Solo debe preguntar una vez: "Save response?"
-            Should -Invoke Read-Host -Times 1
+            # No debe preguntar nada cuando autoLaunch está habilitado
+            Should -Invoke Read-Host -Times 0
         }
     }
 
