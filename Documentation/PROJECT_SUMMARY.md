@@ -10,6 +10,7 @@ AutoSyncBuild is a PowerShell-based automation tool for Unreal Engine developmen
 
 ```
 AutoSyncBuild/
+├── README.md                       # Complete user documentation
 ├── Source/
 │   ├── sync_and_build.bat          # Windows batch wrapper
 │   └── sync_and_build.ps1          # Main PowerShell script (1,100+ lines)
@@ -24,12 +25,9 @@ AutoSyncBuild/
 │   └── example_success.log         # Example log file
 │
 └── Documentation/
-    ├── README.md                   # Complete user documentation
     ├── QUICK_START.md              # 5-minute setup guide
-    ├── CHANGELOG.md                # Version history
+    ├── TESTING.md                # Version history
     ├── TROUBLESHOOTING.md          # Problem-solving guide
-    ├── MIGRATION.md                # v1→v2 upgrade guide
-    └── .p4ignore                   # Version control ignore rules
 ```
 
 ---
