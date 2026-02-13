@@ -300,12 +300,12 @@ Tools/AutoSyncBuild/
 
 ### Build Times (v2.0 vs v1.0)
 
-| Scenario                      | v1.0      | v2.0      | Improvement |
-|-------------------------------|-----------|-----------|-------------|
-| No changes (skip build)       | ~30s      | ~10s      | 67% faster  |
-| Incremental (1-5 files)       | 10-15 min | 5-8 min   | 50% faster  |
-| Incremental (large change)    | 20-30 min | 10-15 min | 50% faster  |
-| Clean build                   | 30-45 min | 15-30 min | 50% faster  |
+| Scenario | v1.0 | v2.0 | Improvement |
+|-------------------------------|-----------|-----------|------------|
+| No changes (skip build)       | ~30s      | ~10s      | 67% faster |
+| Incremental (1-5 files)       | 10-15 min | 5-8 min   | 50% faster |
+| Incremental (large change)    | 20-30 min | 10-15 min | 50% faster |
+| Clean build                   | 30-45 min | 15-30 min | 50% faster |
 
 *Benchmarks on Ryzen 7 5800X, NVMe SSD, 32GB RAM*
 
@@ -351,13 +351,13 @@ Shows detailed information about:
 
 ## Command-Line Reference
 
-| Parameter     | Description                               |
-|---------------|-------------------------------------------|
-| `-Clean`      | Delete binaries and rebuild everything    |
-| `-SkipSync`   | Skip Perforce sync (for local testing)    |
-| `-ForceBuild` | Force rebuild even if no code changes     |
-| `-NoPrompt`   | Auto-launch editor without asking         |
-| `-Verbose`    | Show detailed operation logs              |
+| Parameter     | Description                            |
+|---------------|----------------------------------------|
+| `-Clean`      | Delete binaries and rebuild everything |
+| `-SkipSync`   | Skip Perforce sync (for local testing) |
+| `-ForceBuild` | Force rebuild even if no code changes  |
+| `-NoPrompt`   | Auto-launch editor without asking      |
+| `-Verbose`    | Show detailed operation logs           |
 
 ---
 
@@ -429,7 +429,7 @@ Include this information:
 - Unreal Engine version
 
 ### Feature Requests
-Have ideas for improvements? Let us know!
+Have ideas for improvements? Let me know!
 
 ---
 
