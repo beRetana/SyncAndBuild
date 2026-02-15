@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import webbrowser
 import xml.etree.ElementTree as Et
 from pathlib import Path
 import tkinter as tk
@@ -40,7 +41,7 @@ def get_app_path(location="")-> Path:
         return Path(location)
     
     if getattr(sys, 'frozen', False):
-        return Path(sys.executable)
+        return Path(sys.executable).parent
     return Path(os.path.dirname(os.path.realpath(__file__)))
 
 def get_bat_file_path(starting_dir=None)-> Path:
@@ -446,38 +447,98 @@ class LogType(Enum):
 class ToolInstaller:
 
     TOOL_NAME = "Auto Sync & Build"
-    WINDOW_WIDTH = 650
-    WINDOW_HEIGHT = 520
-    HEADER_BG = "#1e293b"   # Dark slate
-    HEADER_FG = "#f8fafc"   # Near-white
-    LOG_BG = "#f1f5f9"      # Light gray
-
-    GREEN = "#16a34a"
-    RED = "#dc2626"
-    ORANGE = "#d97706"
-    BLUE = "#334155"
-    BLUE_GRAY = "#94a3b8"
+    P4_LINK = "https://portal.perforce.com/s/downloads?utm_medium=cpc&utm_source=googleadwords&utm_campaign=VCS-Branded-Perforce-NA&utm_term=perforce%20server&utm_adgroup=VCS-Perforce-NA-Trial-Search&product=Helix%20Command-Line%20Client%20%28P4%29&_gl=1*1pn1y6z*_gcl_au*MzI3MTM0MTAyLjE3NzEwOTY5Mjg.*_ga*NTE2NDg4NTc5LjE3NjExOTY3ODY.*_ga_HNP3GCZ70D*czE3NzEwOTY5MjckbzgkZzEkdDE3NzEwOTY5NTQkajMzJGwwJGgzMzU1NTU1NDM."
+    P4V_LINK = "https://portal.perforce.com/s/downloads?product=Helix%20Visual%20Client%20%28P4V%29"
+    WINDOW_WIDTH = 750
+    WINDOW_HEIGHT = 600
     
     def __init__(self):
         self._app_path = get_app_path()
         self._project_path = get_project_path(self._app_path)
         self._uproject_path = get_uproject_path(self._project_path)
         self._log_file_path = self._app_path.joinpath("Logs", "installer.log")
+
+        if not self._log_file_path.exists():
+            self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
+            self._log_file_path.touch(exist_ok=True)
+
         self._buffered_log = ""
 
         self.root = tk.Tk()
+        self._configure_styles()
+        self.root.configure(background=self.ROOT_BG)
         self.root.title(f"{self.TOOL_NAME} - Installer")
         self.root.geometry(f"{self.WINDOW_WIDTH}x{self.WINDOW_HEIGHT}")
         self.root.resizable(False, False)
 
         self._build_ui()
 
+    def _configure_styles(self):
+        """Configure dark mode styles for all ttk widgets."""
+        style = ttk.Style()
+        style.theme_use("clam")  # Respeta colores custom en Windows
+
+        BG          = "#27282c"  # Tu fondo principal
+        BG_LIGHT    = "#2f3036"  # Fondo del Text widget
+        BG_HEADER   = "#1e1f23"  # Header (más oscuro)
+        ACCENT      = "#35363b"  # Botones, bordes
+        FG          = "#e2e8f0"  # Texto principal
+        FG_DIM      = "#94a3b8"  # Texto secundario
+
+        self.SUCCESS_FONT_COLOR = "#4ade80"
+        self.ERROR_FONT_COLOR = "#f87171"
+        self.WARNING_FONT_COLOR = "#fbbf24"
+        self.HEADER_FONT_COLOR = "#e2e8f0"
+        self.DIM_FONT_COLOR = "#94a3b8"
+        self.HYPERLINK_COLOR = "#60a5fa"
+
+        # Frames (todos)
+        style.configure("TFrame", background=BG)
+
+        # Labels
+        style.configure("TLabel", background=BG, foreground=FG)
+
+        # LabelFrame ("Progreso")
+        style.configure("TLabelframe",
+                        background=BG,
+                        bordercolor=ACCENT,
+                        lightcolor=BG,
+                        darkcolor=BG,)
+
+        style.configure("TLabelframe.Label", background=BG, foreground=FG_DIM)
+
+        # Buttons
+        style.configure("TButton",
+                        background=ACCENT,
+                        foreground=FG,
+                        borderwidth=0,
+                        padding=(16, 6),
+                        )
+
+        style.map("TButton",
+                  background=[("active", "#475569"), ("disabled", BG_HEADER)],
+                  foreground=[("disabled", "#64748b")],
+                  )
+
+        # Scrollbar
+        style.configure("Vertical.TScrollbar",
+                        borderwidth=0,
+                        width=8,
+                        relief=tk.FLAT
+                        )
+
+        # Store colors as instance variables for tk widgets (non-ttk)
+        self.HEADER_BG = BG_HEADER
+        self.HEADER_FG = FG
+        self.LOG_BG = BG_LIGHT
+        self.ROOT_BG = BG
+
     def _build_ui(self):
 
         # Header Frame
         header = tk.Frame(
             self.root,
-            bg=ToolInstaller.HEADER_BG,
+            bg=self.HEADER_BG,
             height=55
         )
         header.pack(fill=tk.X)
@@ -488,65 +549,83 @@ class ToolInstaller:
             header,
             text=f"⚙    {self.TOOL_NAME} Installer    ⚙",
             font=("Segoe UI", 15, "bold"),
-            bg=ToolInstaller.HEADER_BG,
-            fg=ToolInstaller.HEADER_FG
+            bg=self.HEADER_BG,
+            fg=self.HEADER_FG
         ).pack(pady=13)
 
         # Tool Location Frame
         info_frame = ttk.Frame(
             self.root,
+            style="TFrame"
         )
 
         info_frame.pack(
             fill=tk.X,
             padx=15,
-            pady=(10, 0)
+            pady=(10, 0),
         )
 
         # Tool Location Label
         ttk.Label(
             info_frame,
             text=f"Tool Location: {self._app_path}",
-            foreground="gray",
+            style="TLabel",
             font=("Consolas", 8)
         ).pack(anchor=tk.W)
 
         # Status Frame
 
-        status_frame = ttk.LabelFrame(self.root, text="Progress", padding=8)
+        status_frame = ttk.LabelFrame(self.root, text="Progress", padding=8, style="TLabelframe")
         status_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=8)
 
-        self.status_text = ttk.Text(
+        self.status_text = tk.Text(
             status_frame,
             wrap=tk.WORD,
             font=("Consolas", 8),
             state=tk.DISABLED,
-            bg=ToolInstaller.LOG_BG,
+            bg=self.LOG_BG,
             relief=tk.FLAT,
             padx=8,
             pady=8
         )
 
-        scrollbar = ttk.Scrollbar(status_frame, command=self.status_text.yview)
+        scrollbar = ttk.Scrollbar(status_frame, command=self.status_text.yview, style="Vertical.TScrollbar")
         self.status_text.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.status_text.pack(fill=tk.BOTH, expand=True)
 
-        self.status_text.tag_configure(LogType.INFO.name, foreground=ToolInstaller.BLUE)
-        self.status_text.tag_configure(LogType.WARNING.name, foreground=ToolInstaller.ORANGE)
-        self.status_text.tag_configure(LogType.SUCCESS.name, foreground=ToolInstaller.GREEN)
-        self.status_text.tag_configure(LogType.ERROR.name, foreground=ToolInstaller.RED)
+        self.status_text.tag_configure(LogType.INFO.name, foreground=self.HEADER_FONT_COLOR)
+        self.status_text.tag_configure(LogType.WARNING.name, foreground=self.WARNING_FONT_COLOR)
+        self.status_text.tag_configure(LogType.SUCCESS.name, foreground=self.SUCCESS_FONT_COLOR)
+        self.status_text.tag_configure(LogType.ERROR.name, foreground=self.ERROR_FONT_COLOR)
         self.status_text.tag_configure(LogType.HEADER.name, foreground=self.HEADER_FG, font=("Consolas", 9, "bold"))
-        self.status_text.tag_configure(LogType.DIM.name, foreground=ToolInstaller.BLUE_GRAY)
+        self.status_text.tag_configure(LogType.DIM.name, foreground=self.DIM_FONT_COLOR)
 
         btn_frame = ttk.Frame(self.root)
         btn_frame.pack(fill=tk.X, padx=15, pady=12)
 
-        self.close_btn = ttk.Button(btn_frame, text="Close", command=self.root.quit)
+        self.close_btn = ttk.Button(btn_frame, text="Close", command=self.root.quit, style="TButton")
         self.close_btn.pack(side=tk.RIGHT, padx=5)
 
-        self.install_btn = ttk.Button(btn_frame, text="Install", command=self._on_install_clicked)
+        self.install_btn = ttk.Button(btn_frame, text="Install", command=self._on_install_clicked, style="TButton")
         self.install_btn.pack(side=tk.RIGHT, padx=5)
+
+    def _add_link(self, text: str, url: str):
+        tag_name = f"link_{id(url)}"
+
+        self.status_text.tag_configure(
+            tag_name,
+            foreground=self.HYPERLINK_COLOR,
+            underline=True
+        )
+
+        self.status_text.tag_bind(tag_name, "<Enter>", lambda e: self.status_text.config(cursor="hand2"))
+        self.status_text.tag_bind(tag_name, "<Leave>", lambda e: self.status_text.config(cursor=""))
+        self.status_text.tag_bind(tag_name, "<Button-1>", lambda e: webbrowser.open(url))
+
+        self.status_text.configure(state=tk.NORMAL)
+        self.status_text.insert(tk.END, text, tag_name)
+        self.status_text.configure(state=tk.DISABLED)
         
     def _check_project_structure(self)-> bool:
         """Check if the project structure is correct"""
@@ -579,6 +658,8 @@ class ToolInstaller:
         p4_path = get_p4_path()
         if p4_path is None:
             self._error_log("p4 CLI not found.")
+            self._warning_log("p4 CLI is required to run the installer. Please install it and try again.")
+            self._add_link("Helix Command-Line Client\n", self.P4_LINK)
             return False
         self._success_log("p4 CLI found at: " + str(p4_path))
 
@@ -592,6 +673,8 @@ class ToolInstaller:
         p4v_path = get_p4v_path()
         if p4v_path is None:
             self._error_log("p4v not found.")
+            self._warning_log("p4v is required to run the installer. Please install it and try again.")
+            self._add_link("Helix Visual Client\n", self.P4V_LINK)
             return False
         self._success_log("p4v found at: " + str(p4v_path))
 
@@ -608,6 +691,7 @@ class ToolInstaller:
         if config_path is None or not config_path.is_file():
             self._warning_log("No .p4config file found, creating one...")
             config_path = get_project_path(self._app_path).joinpath(".p4config")
+            config_path.touch(exist_ok=True)
             self._info_log(".p4config file created at: " + str(config_path))
         else:
             self._success_log("Found .p4config file")
@@ -700,7 +784,7 @@ class ToolInstaller:
             self._buffered_log = ""
 
     def _header_log(self, message: str):
-        self._log(f"\n▶ {message}", log_type=LogType.HEADER)
+        self._log(f"  ▶ {message}", log_type=LogType.HEADER)
 
     def _info_log(self, message: str):
         self._log(f"  → {message}", log_type=LogType.INFO)
@@ -715,7 +799,7 @@ class ToolInstaller:
         self._log(f"  ✗ {message}", log_type=LogType.ERROR)
 
     def _dim_log(self, message: str):
-        self._log(message, log_type=LogType.DIM)
+        self._log(f"  - {message}", log_type=LogType.DIM)
 
     def _log(self, message: str, log_type: LogType):
         
@@ -724,21 +808,21 @@ class ToolInstaller:
         self.status_text.configure(state=tk.DISABLED)
         self.status_text.configure(state=tk.DISABLED)
 
-        self._buffered_log += f"{log_type.name}: {message}\n"
+        self._buffered_log += f"{log_type.name}: {message[4:]}\n"
         self.root.update_idletasks()
     
     def _finish(self, success=True):
-        self._info_log("")
-        self._header_log("=" * 48)
+        self._log("", log_type=LogType.INFO)
+        self._log("="*48, log_type=LogType.INFO)
         if success:
-            self._success_log("  Installation Completed")
-            self._info_log("")
-            self._info_log("  Open P4V and look for 'Auto Sync & Build'")
-            self._info_log("  under Tools or in the context menu (right click)")
+            self._success_log("Installation Completed")
+            self._log("", log_type=LogType.INFO)
+            self._info_log("Open P4V and look for 'Auto Sync & Build'")
+            self._info_log("under Tools or in the context menu (right click)")
         else:
-            self._error_log("  Incomplete Installation — Check errors above or log file")
-            self._info_log(f"  Log File can be found at: {str(self._log_file_path)}")
-        self._header_log("=" * 48)
+            self._error_log("Incomplete Installation — Check errors above or log file")
+            self._info_log(f"Log File can be found at: {str(self._log_file_path)}")
+        self._log("="*48, log_type=LogType.INFO)
 
     def _on_install_clicked(self):
         self.install_btn.configure(state=tk.DISABLED)
@@ -751,11 +835,11 @@ class ToolInstaller:
         """Install the tool"""
 
         self._clean_log_file()
-        self._info_log("="*48)
+        self._log("="*48, log_type=LogType.INFO)
         self._header_log(f"{ToolInstaller.TOOL_NAME} - Installer")
         self._dim_log(f"Author: Brandon Eduardo Retana García")
-        self._info_log("=" * 48)
-        self._info_log("")
+        self._log("=" * 48, log_type=LogType.INFO)
+        self._log("", log_type=LogType.INFO)
 
         installation_steps = [
             self._check_project_structure,
@@ -767,9 +851,11 @@ class ToolInstaller:
             self._flush_to_log_file()
             if not step():
                 self._finish(success=False)
+                self._flush_to_log_file()
                 return
 
         self._finish(success=True)
+        self._flush_to_log_file()
     
     def run(self):
         self.root.mainloop()

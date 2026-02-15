@@ -9,3 +9,6 @@ __pycache__/*
 *.claude
 *.pyc
 *.py,cover
+*.spec
+build/*
+dist/*
