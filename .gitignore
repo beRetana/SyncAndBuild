@@ -4,3 +4,8 @@ Config/*
 .idea/*
 *.venv
 *.xml
+*.coverage
+__pycache__/*
+*.claude
+*.pyc
+*.py,cover
