@@ -637,6 +637,188 @@ class TestEdgeCases(unittest.TestCase):
         # File should be updated
         mock_file().writelines.assert_called_once()
 
+    @patch('builtins.open', new_callable=mock_open, read_data="P4USER=user\n# Comment line\nP4PORT=port\nOther content\n")
+    @patch('SynchAndBuildInstaller.get_p4_env_vars')
+    def test_set_config_file_preserves_non_p4_lines(self, mock_get_vars, mock_file):
+        """Test set_config_file preserves lines that aren't P4 variables (covers line 205)"""
+        mock_get_vars.return_value = {
+            "P4USER": "newuser",
+            "P4PORT": "newport"
+        }
+
+        config_file = Path("C:\\Project\\.p4config")
+        installer.set_config_file(config_file)
+
+        # Verify writelines was called (non-P4 lines should be preserved)
+        mock_file().writelines.assert_called_once()
+
+
+class TestToolInstallerMethods(unittest.TestCase):
+    """Tests for ToolInstaller methods that can be tested without full UI"""
+
+    @patch('SynchAndBuildInstaller.ToolInstaller._build_ui')
+    @patch('SynchAndBuildInstaller.get_uproject_path')
+    @patch('SynchAndBuildInstaller.get_project_path')
+    @patch('SynchAndBuildInstaller.get_app_path')
+    @patch('tkinter.Tk')
+    def test_tool_installer_init(self, mock_tk, mock_get_app, mock_get_project, mock_get_uproject, mock_build_ui):
+        """Test ToolInstaller initialization"""
+        mock_get_app.return_value = Path("C:\\Tools\\SyncAndBuild")
+        mock_get_project.return_value = Path("C:\\Project")
+        mock_get_uproject.return_value = Path("C:\\Project\\Game.uproject")
+
+        tool_installer = installer.ToolInstaller()
+
+        self.assertEqual(tool_installer._app_path, Path("C:\\Tools\\SyncAndBuild"))
+        self.assertEqual(tool_installer._project_path, Path("C:\\Project"))
+        self.assertEqual(tool_installer._uproject_path, Path("C:\\Project\\Game.uproject"))
+        mock_build_ui.assert_called_once()
+
+    def _create_tool_installer(self):
+        """Helper method to create a ToolInstaller instance with mocked UI"""
+        with patch('SynchAndBuildInstaller.ToolInstaller._build_ui'), \
+             patch('SynchAndBuildInstaller.get_app_path', return_value=Path("C:\\Tools\\SyncAndBuild")), \
+             patch('SynchAndBuildInstaller.get_project_path', return_value=Path("C:\\Project")), \
+             patch('SynchAndBuildInstaller.get_uproject_path', return_value=Path("C:\\Project\\Game.uproject")), \
+             patch('tkinter.Tk'):
+            tool_installer = installer.ToolInstaller()
+            # Mock UI components that methods use
+            tool_installer.status_text = MagicMock()
+            tool_installer.root = MagicMock()
+            return tool_installer
+
+    def test_check_project_structure_success(self):
+        """Test _check_project_structure when all checks pass"""
+        tool_installer = self._create_tool_installer()
+
+        with patch.object(installer, 'check_source_files_exist', return_value=True):
+            result = tool_installer._check_project_structure()
+            self.assertTrue(result)
+
+    def test_check_project_structure_missing_source_files(self):
+        """Test _check_project_structure when source files are missing"""
+        tool_installer = self._create_tool_installer()
+
+        with patch.object(installer, 'check_source_files_exist', return_value=False):
+            result = tool_installer._check_project_structure()
+            self.assertFalse(result)
+
+    def test_check_project_structure_no_project_path(self):
+        """Test _check_project_structure when project path is None"""
+        tool_installer = self._create_tool_installer()
+        tool_installer._project_path = None
+
+        with patch.object(installer, 'check_source_files_exist', return_value=True):
+            result = tool_installer._check_project_structure()
+            self.assertFalse(result)
+
+    def test_check_project_structure_no_uproject(self):
+        """Test _check_project_structure when .uproject file is missing"""
+        tool_installer = self._create_tool_installer()
+        tool_installer._uproject_path = None
+
+        with patch.object(installer, 'check_source_files_exist', return_value=True):
+            result = tool_installer._check_project_structure()
+            self.assertFalse(result)
+
+    def test_check_p4_success(self):
+        """Test _check_p4 when all P4 checks pass"""
+        tool_installer = self._create_tool_installer()
+
+        with patch.object(installer, 'get_p4_path', return_value=Path("C:\\p4.exe")), \
+             patch.object(installer, 'get_p4v_path', return_value=Path("C:\\p4v.exe")), \
+             patch.object(installer, 'check_p4_connection', return_value=True):
+            result = tool_installer._check_p4()
+            self.assertTrue(result)
+
+    def test_check_p4_no_p4_exe(self):
+        """Test _check_p4 when p4.exe is not found"""
+        tool_installer = self._create_tool_installer()
+
+        with patch.object(installer, 'get_p4_path', return_value=None):
+            result = tool_installer._check_p4()
+            self.assertFalse(result)
+
+    def test_check_p4_no_connection(self):
+        """Test _check_p4 when p4 connection fails"""
+        tool_installer = self._create_tool_installer()
+
+        with patch.object(installer, 'get_p4_path', return_value=Path("C:\\p4.exe")), \
+             patch.object(installer, 'check_p4_connection', return_value=False):
+            result = tool_installer._check_p4()
+            self.assertFalse(result)
+
+    def test_check_p4_no_p4v(self):
+        """Test _check_p4 when p4v is not found"""
+        tool_installer = self._create_tool_installer()
+
+        with patch.object(installer, 'get_p4_path', return_value=Path("C:\\p4.exe")), \
+             patch.object(installer, 'get_p4v_path', return_value=None), \
+             patch.object(installer, 'check_p4_connection', return_value=True):
+            result = tool_installer._check_p4()
+            self.assertFalse(result)
+
+    def test_setup_custom_tool_no_userprofile(self):
+        """Test _setup_custom_tool when USERPROFILE is not set"""
+        tool_installer = self._create_tool_installer()
+
+        with patch.object(installer, 'get_p4v_custom_tools_path', return_value=None):
+            result = tool_installer._setup_custom_tool()
+            self.assertFalse(result)
+
+    def test_setup_custom_tool_already_defined(self):
+        """Test _setup_custom_tool when tool is already defined"""
+        tool_installer = self._create_tool_installer()
+        custom_tools_path = Path("C:\\Users\\Test\\.p4qt\\customtools.xml")
+
+        with patch.object(installer, 'get_p4v_custom_tools_path', return_value=custom_tools_path), \
+             patch.object(installer, 'is_custom_tool_defined', return_value=True), \
+             patch.object(installer, 'fix_existing_custom_tool', return_value=True), \
+             patch.object(installer, 'get_bat_file_path', return_value=Path("C:\\bat.bat")):
+            result = tool_installer._setup_custom_tool()
+            self.assertTrue(result)
+
+    def test_setup_custom_tool_not_defined(self):
+        """Test _setup_custom_tool when tool needs to be created"""
+        tool_installer = self._create_tool_installer()
+        custom_tools_path = Path("C:\\Users\\Test\\.p4qt\\customtools.xml")
+
+        with patch.object(installer, 'get_p4v_custom_tools_path', return_value=custom_tools_path), \
+             patch.object(installer, 'is_custom_tool_defined', return_value=False), \
+             patch.object(installer, 'define_custom_tool', return_value=True), \
+             patch.object(installer, 'get_bat_file_path', return_value=Path("C:\\bat.bat")):
+            result = tool_installer._setup_custom_tool()
+            self.assertTrue(result)
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_clean_log_file(self, mock_file):
+        """Test _clean_log_file clears the log file"""
+        tool_installer = self._create_tool_installer()
+        tool_installer._clean_log_file()
+
+        mock_file.assert_called_once()
+        mock_file().write.assert_called_once_with("")
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_flush_to_log_file_with_buffer(self, mock_file):
+        """Test _flush_to_log_file writes buffered content"""
+        tool_installer = self._create_tool_installer()
+        tool_installer._buffered_log = "Test log content"
+        tool_installer._flush_to_log_file()
+
+        mock_file().write.assert_called_once_with("Test log content")
+        self.assertEqual(tool_installer._buffered_log, "")
+
+    def test_flush_to_log_file_empty_buffer(self):
+        """Test _flush_to_log_file does nothing when buffer is empty"""
+        tool_installer = self._create_tool_installer()
+        tool_installer._buffered_log = ""
+
+        # Should return early without opening file
+        with patch('builtins.open', new_callable=mock_open) as mock_file:
+            tool_installer._flush_to_log_file()
+            mock_file.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

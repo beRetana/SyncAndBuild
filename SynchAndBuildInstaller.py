@@ -177,14 +177,25 @@ def create_p4_config(variables=None):
     
 def set_config_file(config_file: Path, variables=None)-> None:
     """Set the p4 config file in the environment variables"""
-    
+
     if variables is None:
         variables = get_p4_env_vars()
-        
+
     keywords = list(variables.keys())
 
-    with open(config_file, "r") as file:
-        current_config = file.readlines()
+    # Create file if it doesn't exist
+    if not config_file.exists():
+        # Create parent directories if they don't exist
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.touch()
+        current_config = ["\n"]
+    else:
+        with open(config_file, "r") as file:
+            current_config = file.readlines()
+
+    # Handle empty file
+    if len(current_config) == 0:
+        current_config = ["\n"]
     
     if current_config[0] == "\n":
         with open(config_file, "w") as file:
@@ -572,7 +583,7 @@ class ToolInstaller:
         self._success_log("p4 CLI found at: " + str(p4_path))
 
         self._info_log("Checking for p4 CLI connection...")
-        if check_p4_connection():
+        if not check_p4_connection():
             self._error_log("p4 CLI is not connected to the server.")
             return False
         self._success_log("p4 CLI is connected to the server.")
@@ -629,13 +640,13 @@ class ToolInstaller:
         self._warning_log("Credentials are still needed, user input required.")
 
         result = P4ConfigUI(self._app_path.parent, env_variables).result
-        if len(result) != 3:
+        if result is None or len(result) != 3:
             self._error_log("Failed to obtain credentials from user input, aborting installation.")
             return False
 
         self._success_log("Credentials set successfully.")
         self._info_log("Setting config file with credentials.")
-        set_config_file(config_path, env_variables)
+        set_config_file(config_path, result)
         self._success_log(".p4config credentials set successfully.")
         return True
     
