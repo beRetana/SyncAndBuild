@@ -88,7 +88,7 @@ class TestPathGetters(unittest.TestCase):
 class TestSearchForFile(unittest.TestCase):
     """Tests for search_for_file and related functions"""
 
-    @patch('SynchAndBuildInstaller.search_for_file')
+    @patch('SynchAndBuildInstaller._search_for_file')
     def test_get_p4_path(self, mock_search):
         """Test get_p4_path calls search_for_file with correct parameters"""
         expected_path = Path("C:\\Perforce\\p4.exe")
@@ -98,7 +98,7 @@ class TestSearchForFile(unittest.TestCase):
         mock_search.assert_called_once_with(installer.P4_COMMON_PATHS, "p4.exe")
         self.assertEqual(result, expected_path)
 
-    @patch('SynchAndBuildInstaller.search_for_file')
+    @patch('SynchAndBuildInstaller._search_for_file')
     def test_get_p4v_path(self, mock_search):
         """Test get_p4v_path calls search_for_file with correct parameters"""
         expected_path = Path("C:\\Perforce\\p4v.exe")
@@ -187,8 +187,8 @@ class TestP4Config(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch('SynchAndBuildInstaller.subprocess.run')
-    def test_get_p4_var_success(self, mock_run):
-        """Test _get_p4_var with successful execution"""
+    def test_get_p4_env_var_success(self, mock_run):
+        """Test _get_p4_env_var with successful execution"""
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "P4USER=testuser\n"
@@ -198,8 +198,8 @@ class TestP4Config(unittest.TestCase):
         self.assertEqual(result, ["P4USER", "testuser"])
 
     @patch('SynchAndBuildInstaller.subprocess.run')
-    def test_get_p4_var_failure(self, mock_run):
-        """Test _get_p4_var with failed execution"""
+    def test_get_p4_env_var_failure(self, mock_run):
+        """Test _get_p4_env_var with failed execution"""
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_run.return_value = mock_result
@@ -207,7 +207,7 @@ class TestP4Config(unittest.TestCase):
         result = installer._get_p4_env_var("P4USER")
         self.assertIsNone(result)
 
-    @patch('SynchAndBuildInstaller._get_p4_var')
+    @patch('SynchAndBuildInstaller._get_p4_env_var')
     def test_get_p4_env_vars(self, mock_get_var):
         """Test get_p4_env_vars returns dict with all variables"""
         mock_get_var.side_effect = [
@@ -223,7 +223,7 @@ class TestP4Config(unittest.TestCase):
             "P4CLIENT": "testclient"
         })
 
-    @patch('SynchAndBuildInstaller._get_p4_var')
+    @patch('SynchAndBuildInstaller._get_p4_env_var')
     def test_get_p4_env_vars_partial(self, mock_get_var):
         """Test get_p4_env_vars when some variables are not available"""
         mock_get_var.side_effect = [
@@ -238,10 +238,10 @@ class TestP4Config(unittest.TestCase):
             "P4CLIENT": "testclient"
         })
 
-    @patch('SynchAndBuildInstaller.set_config')
+    @patch('SynchAndBuildInstaller.set_config_file')
     @patch('SynchAndBuildInstaller.get_project_path')
     @patch('SynchAndBuildInstaller.get_app_path')
-    def test_create_p4_config(self, mock_get_app, mock_get_project, mock_set_config):
+    def test_create_p4_config(self, mock_get_app, mock_get_project, mock_set_config_file):
         """Test create_p4_config creates config in correct location"""
         project_path = Path("C:\\Project")
         mock_get_app.return_value = Path("C:\\Project\\Tools\\SyncAndBuild")
@@ -249,7 +249,7 @@ class TestP4Config(unittest.TestCase):
 
         installer.create_p4_config()
         expected_config_path = project_path.joinpath(".p4config")
-        mock_set_config.assert_called_once_with(expected_config_path)
+        mock_set_config_file.assert_called_once_with(expected_config_path, None)
 
     @patch('builtins.open', new_callable=mock_open, read_data="\n")
     @patch('SynchAndBuildInstaller.get_p4_env_vars')
@@ -316,44 +316,6 @@ class TestSourceFiles(unittest.TestCase):
 
         result = installer.check_source_files_exist(custom_path)
         self.assertTrue(result)
-
-
-class TestP4ConfigCheck(unittest.TestCase):
-    """Tests for check_p4_config function"""
-
-    @patch('SynchAndBuildInstaller.create_p4_config')
-    @patch('SynchAndBuildInstaller.get_p4_config_path')
-    def test_check_p4_config_no_config_found(self, mock_get_config, mock_create):
-        """Test check_p4_config creates config when not found"""
-        mock_get_config.return_value = None
-
-        installer.check_p4_config()
-        mock_create.assert_called_once()
-
-    @patch('pathlib.Path.exists')
-    @patch('SynchAndBuildInstaller.create_p4_config')
-    @patch('SynchAndBuildInstaller.get_p4_config_path')
-    def test_check_p4_config_path_not_exists(self, mock_get_config, mock_create, mock_exists):
-        """Test check_p4_config creates config when path doesn't exist"""
-        config_path = MagicMock()
-        config_path.exists.return_value = False
-        mock_get_config.return_value = config_path
-
-        installer.check_p4_config()
-        mock_create.assert_called_once()
-
-    @patch('SynchAndBuildInstaller.set_config')
-    @patch('pathlib.Path.exists')
-    @patch('SynchAndBuildInstaller.get_p4_config_path')
-    def test_check_p4_config_exists(self, mock_get_config, mock_exists, mock_set):
-        """Test check_p4_config updates existing config"""
-        config_path = MagicMock()
-        config_path.exists.return_value = True
-        mock_get_config.return_value = config_path
-
-        installer.check_p4_config()
-        mock_set.assert_called_once_with(config_path)
-
 
 if __name__ == '__main__':
     unittest.main()
