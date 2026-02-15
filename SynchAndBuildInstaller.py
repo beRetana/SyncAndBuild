@@ -1,11 +1,11 @@
 import os
 import shutil
 import subprocess
-from idlelib.sidebar import EndLineDelegator
-
-from P4 import P4
-from pathlib import Path
 import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 # The tool cannot run without these files
 REQUIRED_SOURCE_FILES = [
@@ -42,6 +42,14 @@ def get_app_path(location="")-> Path:
     if getattr(sys, 'frozen', False):
         return Path(sys.executable)
     return Path(os.path.dirname(os.path.realpath(__file__)))
+
+def get_bat_file_path(starting_dir=None)-> Path:
+    """Return the path to the sync_and_build.bat file"""
+    
+    if starting_dir is not None:
+        return next(starting_dir.rglob("sync_and_build.bat"))
+    
+    return get_app_path().joinpath("Source", "sync_and_build.bat")
 
 def get_project_path(app_path: Path)-> Path | None:
     """Return the path to the project folder"""
@@ -97,18 +105,6 @@ def get_p4_config_path(project_path=None)-> Path | None:
             return file
     
     return None
-        
-def check_source_files_exist(app_path=None)-> bool:
-    """Check if the required source files exist in the project"""
-    
-    if app_path is None:
-        app_path = get_app_path()
-        
-    for file in REQUIRED_SOURCE_FILES:
-        if not (app_path / file).exists():
-            return False
-        
-    return True
 
 def _get_p4_var(var_name: str)-> list[str] | None:
     """Return the value of a p4 environment variable"""
@@ -144,6 +140,17 @@ def get_p4_env_vars()-> dict:
             dict_to_return[result[0]] = result[1]
     
     return dict_to_return
+
+def get_p4v_custom_tools_path()-> Path | None:
+    """Return a path to the XML file with custom tools in p4v"""
+    
+    env = os.environ.copy()
+    
+    user_profile = env.get("USERPROFILE", None)
+    
+    if user_profile is None:
+        return None
+    return Path(user_profile).joinpath(".p4qt", "customtools.xml")
 
 def create_p4_config():
     """Create a p4 config file in the project folder"""
@@ -181,7 +188,19 @@ def set_config(config_file: Path, variables=None)-> None:
     
     with open(config_file, "w") as file:
         file.writelines(new_config)
-            
+
+def check_source_files_exist(app_path=None)-> bool:
+    """Check if the required source files exist in the project"""
+
+    if app_path is None:
+        app_path = get_app_path()
+
+    for file in REQUIRED_SOURCE_FILES:
+        if not (app_path / file).exists():
+            return False
+
+    return True
+           
 # this is for now, we will add GUI later    
 def check_p4_config():
     """Check if the p4 config file exists"""
@@ -195,22 +214,75 @@ def check_p4_config():
         create_p4_config()
     else:
         set_config(config_path)
-        
-def test_path_getters():
-    test_path = "C:\\Users\\breta\\Downloads\\Proyectos_Personales\\Unreal\\GroupProjects\\Breaker\\Tools\\SyncAndBuild"
-    app_path = get_app_path(test_path)
-    print(app_path)
-    project_path = get_project_path(app_path)
-    print(project_path)
-    uproject_path = get_uproject_path(project_path)
-    print(uproject_path)
-    p4_path = get_p4_path()
-    print(p4_path)
-    p4v_path = get_p4v_path()
-    print(p4v_path)
-    config_path = get_p4_config_path(project_path)
-    print(config_path)
+
+def is_custom_tool_defined(custom_tool_file: Path, custom_tool_name: str)-> bool:
+    """Check if a custom tool is defined in p4v"""
     
+    if (custom_tool_file is None) or (not os.path.isfile(custom_tool_file)):
+        return False
+    
+    try:
+        tree = ET.parse(custom_tool_file)
+        root = tree.getroot()
+        for tool_definition in root.findall("CustomToolDef"):
+            tool_def_content = tool_definition.find(".//Name")
+            if tool_def_content is not None and tool_def_content.text == custom_tool_name:
+                return True
+            
+    except ET.ParseError:
+        return False
+    return False
+
+def define_custom_tool(custom_tool_file: Path, tool_name: str, bat_path: str, starting_folder: str)-> bool:
+    """Define a custom tool in p4v"""
+    p4qt_dir = os.path.dirname(custom_tool_file)
+    
+    if not os.path.isfile(custom_tool_file):
+        os.makedirs(p4qt_dir, exist_ok=True)
+        root = ET.Element("CustomToolDefList")
+        root.set("varName", "customtooldeflist")
+        tree = ET.ElementTree(root)
+    else:
+        tree = ET.parse(custom_tool_file)
+        root = tree.getroot()
+
+    tool_def = ET.SubElement(root, "CustomToolDef")
+
+    definition = ET.SubElement(tool_def, "Definition")
+    ET.SubElement(definition, "Name").text = tool_name
+    ET.SubElement(definition, "Command").text = r"C:\Windows\System32\cmd.exe"
+    ET.SubElement(definition, "Arguments").text = f"/k {bat_path}"
+    ET.SubElement(definition, "Shortcut").text = ""
+    ET.SubElement(definition, "InitDir").text = starting_folder
+
+    console = ET.SubElement(tool_def, "Console")
+    ET.SubElement(console, "CloseOnExit").text = "true"
+
+    ET.SubElement(tool_def, "AddToContext").text = "true"
+    ET.SubElement(tool_def, "Refresh").text = "true"
+
+    ET.indent(tree, space="  ")
+
+    tree.write(custom_tool_file, encoding="UTF-8", xml_declaration=True)
+    
+    return True
+
+def fix_existing_custom_tool(custom_tool_file: Path, custom_tool_name: str, bat_path: str, starting_folder: str)-> bool:
+    """Fix an existing custom tool in p4v"""
+    
+    tree = ET.parse(custom_tool_file)
+    root = tree.getroot()
+    
+    for tool_definition in root.findall("CustomToolDef"):
+        tool_def_name = tool_definition.find(".//Name")
+        if tool_def_name is not None and tool_def_name.text == custom_tool_name:
+            print(f"Custom tool {custom_tool_name} already exists, updating...")
+            root.remove(tool_definition)
+            
+    tree.write(custom_tool_file, encoding="UTF-8", xml_declaration=True)
+    
+    return define_custom_tool(custom_tool_file, custom_tool_name, bat_path, starting_folder)
+        
 class InstallerGUI:
     def __init__(self):
         pass
