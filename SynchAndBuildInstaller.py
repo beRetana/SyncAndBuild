@@ -70,14 +70,14 @@ def get_uproject_path(project_path: Path)-> Path | None:
 def get_p4_path()-> Path | None:
     """Search for a p4 executable and return the path to it, if not found, then return None"""
     
-    return search_for_file(P4_COMMON_PATHS, "p4.exe")
+    return _search_for_file(P4_COMMON_PATHS, "p4.exe")
 
 def get_p4v_path()-> Path | None:
     """Search for a p4v executable and return the path to it, if not found, then return None"""
 
-    return search_for_file(P4V_COMMON_PATHS, "p4v.exe")
+    return _search_for_file(P4V_COMMON_PATHS, "p4v.exe")
 
-def search_for_file(common_paths: list, file_name='')-> Path | None:
+def _search_for_file(common_paths: list, file_name='')-> Path | None:
     """Search for a file in common paths and return the path to it, if not found, then return None"""
     result = shutil.which(file_name)
     if result is not None:
@@ -108,7 +108,7 @@ def get_p4_config_path(project_path=None)-> Path | None:
     
     return None
 
-def _get_p4_var(var_name: str)-> list[str] | None:
+def _get_p4_env_var(var_name: str)-> list[str] | None:
     """Return the value of a p4 environment variable"""
     
     env = os.environ.copy()
@@ -137,10 +137,31 @@ def get_p4_env_vars()-> dict:
     vars_to_get = [P4_USER, P4_PORT, P4_CLIENT]
     
     for var in vars_to_get:
-        result = _get_p4_var(var)
+        result = _get_p4_env_var(var)
         if result is not None:
             dict_to_return[result[0]] = result[1]
     
+    return dict_to_return
+
+def get_p4_config_file_vars(config_path=None)-> dict:
+    """Return a dictionary with the p4 config file variables"""
+
+    if config_path is None:
+        config_path = get_p4_config_path()
+
+    keywords = [P4_USER, P4_PORT, P4_CLIENT]
+    dict_to_return = {}
+
+    if config_path is None:
+        return dict_to_return
+
+    with open(config_path, "r") as file:
+        for line in file:
+            for keyword in keywords:
+                if line.startswith(f"{keyword}="):
+                    dict_to_return[keyword] = line.split("=")[1].split()[0].strip()
+                    break
+
     return dict_to_return
 
 def get_p4v_custom_tools_path()-> Path | None:
@@ -154,12 +175,12 @@ def get_p4v_custom_tools_path()-> Path | None:
         return None
     return Path(user_profile).joinpath(".p4qt", "customtools.xml")
 
-def create_p4_config():
+def create_p4_config(variables=None):
     """Create a p4 config file in the project folder"""
     config_path = get_project_path(get_app_path()).joinpath(".p4config")
-    set_config(config_path)
+    set_config_file(config_path, variables)
     
-def set_config(config_file: Path, variables=None)-> None:
+def set_config_file(config_file: Path, variables=None)-> None:
     """Set the p4 config file in the environment variables"""
     
     if variables is None:
@@ -287,8 +308,9 @@ def fix_existing_custom_tool(custom_tool_file: Path, custom_tool_name: str, bat_
     
     return define_custom_tool(custom_tool_file, custom_tool_name, bat_path, starting_folder)
 
-class InstallerGUI:
+class P4ConfigUI(tk.Toplevel):
     def __init__(self):
+        super().__init__()
         pass
             
 class LogType(Enum):
@@ -357,7 +379,47 @@ class ToolInstaller:
         
     def _setup_p4_config_(self)-> bool:
         """Check if the p4 config file exists"""
-        return False
+
+        self._log(LogType.INFO, "Setting up p4config credentials")
+        self._log(LogType.INFO, "Searching for p4 config file...")
+
+        config_path = get_p4_config_path(self._project_path)
+
+        if config_path is None or not config_path.is_file():
+            self._log(LogType.WARNING, "No .p4config file found, creating one...")
+            config_path = get_project_path(self._app_path).joinpath(".p4config")
+            self._log(LogType.WARNING, ".p4config file created at: " + str(config_path))
+        else:
+            self._log(LogType.SUCCESS, "Found .p4config file")
+            self._log(LogType.INFO, "Checking if credentials are correct...")
+
+        file_variables = get_p4_config_file_vars(config_path)
+
+        match len(file_variables):
+            case 3:
+                self._log(LogType.SUCCESS, "Found All credentials in .p4config file.")
+                return True
+            case 0:
+                self._log(LogType.WARNING, "All credentials in .p4config are missing")
+            case _:
+                self._log(LogType.WARNING, "Some credentials in .p4config are missing")
+
+        self._log(LogType.INFO, "Searching for credentials in environment variables...")
+        env_variables = get_p4_env_vars()
+
+        for key, value in file_variables.items():
+            env_variables[key] = value
+
+        if len(env_variables) == 3:
+            self._log(LogType.SUCCESS, "Found All credentials.")
+            self._log(LogType.INFO, "Setting config file with found credentials.")
+            set_config_file(config_path, env_variables)
+            self._log(LogType.SUCCESS, ".p4config credentials set successfully.")
+            return True
+
+        self._log(LogType.WARNING, "Credentials are still needed, user input required.")
+        # calls for user input
+        return True
     
     def _setup_custom_tool_(self)-> bool:
         """Check if the custom tool is defined in p4v"""
@@ -420,4 +482,4 @@ class ToolInstaller:
             self._flush_to_log_file()
 
 if __name__ == "__main__":
-    pass
+    print(get_p4_config_file_vars())

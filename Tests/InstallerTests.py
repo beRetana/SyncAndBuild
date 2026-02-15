@@ -112,7 +112,7 @@ class TestSearchForFile(unittest.TestCase):
     def test_search_for_file_found_by_which(self, mock_which):
         """Test search_for_file when file is found by shutil.which"""
         mock_which.return_value = "C:\\System32\\p4.exe"
-        result = installer.search_for_file([], "p4.exe")
+        result = installer._search_for_file([], "p4.exe")
         self.assertEqual(result, Path("C:\\System32\\p4.exe"))
 
     @patch('SynchAndBuildInstaller.shutil.which')
@@ -125,7 +125,7 @@ class TestSearchForFile(unittest.TestCase):
         mock_exists.return_value = True
 
         common_paths = [os.path.join("Program Files", "Perforce", "p4.exe")]
-        result = installer.search_for_file(common_paths, "p4.exe")
+        result = installer._search_for_file(common_paths, "p4.exe")
         self.assertEqual(result, Path("C:\\Program Files\\Perforce\\p4.exe"))
 
     @patch('SynchAndBuildInstaller.shutil.which')
@@ -140,7 +140,7 @@ class TestSearchForFile(unittest.TestCase):
         expected_path = Path("C:\\SomeFolder\\p4.exe")
         mock_rglob.return_value = iter([expected_path])
 
-        result = installer.search_for_file([], "p4.exe")
+        result = installer._search_for_file([], "p4.exe")
         self.assertEqual(result, expected_path)
 
     @patch('SynchAndBuildInstaller.shutil.which')
@@ -154,7 +154,7 @@ class TestSearchForFile(unittest.TestCase):
         mock_get_root.return_value = Path("C:\\")
         mock_rglob.return_value = iter([])
 
-        result = installer.search_for_file([], "nonexistent.exe")
+        result = installer._search_for_file([], "nonexistent.exe")
         self.assertIsNone(result)
 
 
@@ -194,7 +194,7 @@ class TestP4Config(unittest.TestCase):
         mock_result.stdout = "P4USER=testuser\n"
         mock_run.return_value = mock_result
 
-        result = installer._get_p4_var("P4USER")
+        result = installer._get_p4_env_var("P4USER")
         self.assertEqual(result, ["P4USER", "testuser"])
 
     @patch('SynchAndBuildInstaller.subprocess.run')
@@ -204,7 +204,7 @@ class TestP4Config(unittest.TestCase):
         mock_result.returncode = 1
         mock_run.return_value = mock_result
 
-        result = installer._get_p4_var("P4USER")
+        result = installer._get_p4_env_var("P4USER")
         self.assertIsNone(result)
 
     @patch('SynchAndBuildInstaller._get_p4_var')
@@ -261,7 +261,7 @@ class TestP4Config(unittest.TestCase):
         }
 
         config_file = Path("C:\\Project\\.p4config")
-        installer.set_config(config_file)
+        installer.set_config_file(config_file)
 
         # Verify file was opened for reading and writing
         calls = mock_file().write.call_args_list
@@ -279,7 +279,7 @@ class TestP4Config(unittest.TestCase):
         }
 
         config_file = Path("C:\\Project\\.p4config")
-        installer.set_config(config_file)
+        installer.set_config_file(config_file)
 
         # Verify file was written
         mock_file().writelines.assert_called_once()
