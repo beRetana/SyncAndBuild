@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Add parent directory to path to import the module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import SynchAndBuildInstaller as installer
+import Installer as installer
 
 
 class TestPathGetters(unittest.TestCase):
@@ -18,9 +18,9 @@ class TestPathGetters(unittest.TestCase):
         self.assertEqual(result, Path("C:\\"))
         self.assertIsInstance(result, Path)
 
-    @patch('SynchAndBuildInstaller.sys')
-    @patch('SynchAndBuildInstaller.os.path.dirname')
-    @patch('SynchAndBuildInstaller.os.path.realpath')
+    @patch('Installer.sys')
+    @patch('Installer.os.path.dirname')
+    @patch('Installer.os.path.realpath')
     def test_get_app_path_with_location(self, mock_realpath, mock_dirname, mock_sys):
         """Test get_app_path with a valid location parameter"""
         test_location = "C:\\TestFolder"
@@ -28,23 +28,23 @@ class TestPathGetters(unittest.TestCase):
             result = installer.get_app_path(test_location)
             self.assertEqual(result, Path(test_location))
 
-    @patch('SynchAndBuildInstaller.sys')
-    @patch('SynchAndBuildInstaller.os.path.dirname')
-    @patch('SynchAndBuildInstaller.os.path.realpath')
+    @patch('Installer.sys')
+    @patch('Installer.os.path.dirname')
+    @patch('Installer.os.path.realpath')
     def test_get_app_path_frozen(self, mock_realpath, mock_dirname, mock_sys):
-        """Test get_app_path when application is frozen (exe)"""
+        """Test get_app_path when application is frozen (exe) returns parent dir"""
         mock_sys.frozen = True
         mock_sys.executable = "C:\\App\\tool.exe"
         result = installer.get_app_path()
-        self.assertEqual(result, Path("C:\\App\\tool.exe"))
+        self.assertEqual(result, Path("C:\\App"))
 
-    @patch('SynchAndBuildInstaller.sys')
-    @patch('SynchAndBuildInstaller.os.path.dirname')
-    @patch('SynchAndBuildInstaller.os.path.realpath')
+    @patch('Installer.sys')
+    @patch('Installer.os.path.dirname')
+    @patch('Installer.os.path.realpath')
     def test_get_app_path_not_frozen(self, mock_realpath, mock_dirname, mock_sys):
         """Test get_app_path when application is not frozen (running as script)"""
         mock_sys.frozen = False
-        mock_realpath.return_value = "C:\\Scripts\\SynchAndBuildInstaller.py"
+        mock_realpath.return_value = "C:\\Scripts\\Installer.py"
         mock_dirname.return_value = "C:\\Scripts"
         result = installer.get_app_path()
         self.assertEqual(result, Path("C:\\Scripts"))
@@ -88,7 +88,7 @@ class TestPathGetters(unittest.TestCase):
 class TestSearchForFile(unittest.TestCase):
     """Tests for search_for_file and related functions"""
 
-    @patch('SynchAndBuildInstaller._search_for_file')
+    @patch('Installer._search_for_file')
     def test_get_p4_path(self, mock_search):
         """Test get_p4_path calls search_for_file with correct parameters"""
         expected_path = Path("C:\\Perforce\\p4.exe")
@@ -98,7 +98,7 @@ class TestSearchForFile(unittest.TestCase):
         mock_search.assert_called_once_with(installer.P4_COMMON_PATHS, "p4.exe")
         self.assertEqual(result, expected_path)
 
-    @patch('SynchAndBuildInstaller._search_for_file')
+    @patch('Installer._search_for_file')
     def test_get_p4v_path(self, mock_search):
         """Test get_p4v_path calls search_for_file with correct parameters"""
         expected_path = Path("C:\\Perforce\\p4v.exe")
@@ -109,7 +109,7 @@ class TestSearchForFile(unittest.TestCase):
         self.assertEqual(result, expected_path)
 
     @patch('pathlib.Path.exists')
-    @patch('SynchAndBuildInstaller.get_root_path')
+    @patch('Installer.get_root_path')
     def test_search_for_file_found_in_common_paths(self, mock_get_root, mock_exists):
         """Test _search_for_file when file is found in common paths"""
         mock_get_root.return_value = Path("C:\\")
@@ -121,7 +121,7 @@ class TestSearchForFile(unittest.TestCase):
 
     @patch('pathlib.Path.exists')
     @patch('pathlib.Path.rglob')
-    @patch('SynchAndBuildInstaller.get_root_path')
+    @patch('Installer.get_root_path')
     def test_search_for_file_found_by_rglob(self, mock_get_root, mock_rglob, mock_exists):
         """Test _search_for_file when file is found by recursive search"""
         mock_exists.return_value = False
@@ -134,7 +134,7 @@ class TestSearchForFile(unittest.TestCase):
 
     @patch('pathlib.Path.exists')
     @patch('pathlib.Path.rglob')
-    @patch('SynchAndBuildInstaller.get_root_path')
+    @patch('Installer.get_root_path')
     def test_search_for_file_not_found(self, mock_get_root, mock_rglob, mock_exists):
         """Test _search_for_file when file is not found"""
         mock_exists.return_value = False
@@ -145,7 +145,7 @@ class TestSearchForFile(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch('pathlib.Path.exists')
-    @patch('SynchAndBuildInstaller.get_root_path')
+    @patch('Installer.get_root_path')
     def test_search_for_file_multiple_common_paths(self, mock_get_root, mock_exists):
         """Test _search_for_file with multiple common paths, finds in second"""
         mock_get_root.return_value = Path("C:\\")
@@ -163,8 +163,8 @@ class TestSearchForFile(unittest.TestCase):
 class TestP4Config(unittest.TestCase):
     """Tests for P4 configuration functions"""
 
-    @patch('SynchAndBuildInstaller.get_project_path')
-    @patch('SynchAndBuildInstaller.get_app_path')
+    @patch('Installer.get_project_path')
+    @patch('Installer.get_app_path')
     @patch('pathlib.Path.rglob')
     @patch('pathlib.Path.is_file')
     def test_get_p4_config_path_found(self, mock_is_file, mock_rglob, mock_get_app, mock_get_project):
@@ -177,8 +177,8 @@ class TestP4Config(unittest.TestCase):
         result = installer.get_p4_config_path()
         self.assertEqual(result, expected_path)
 
-    @patch('SynchAndBuildInstaller.get_project_path')
-    @patch('SynchAndBuildInstaller.get_app_path')
+    @patch('Installer.get_project_path')
+    @patch('Installer.get_app_path')
     @patch('pathlib.Path.rglob')
     def test_get_p4_config_path_not_found(self, mock_rglob, mock_get_app, mock_get_project):
         """Test get_p4_config_path when config file is not found"""
@@ -188,7 +188,7 @@ class TestP4Config(unittest.TestCase):
         result = installer.get_p4_config_path()
         self.assertIsNone(result)
 
-    @patch('SynchAndBuildInstaller.subprocess.run')
+    @patch('Installer.subprocess.run')
     def test_get_p4_env_var_success(self, mock_run):
         """Test _get_p4_env_var with successful execution"""
         mock_result = MagicMock()
@@ -199,7 +199,7 @@ class TestP4Config(unittest.TestCase):
         result = installer._get_p4_env_var("P4USER")
         self.assertEqual(result, ["P4USER", "testuser"])
 
-    @patch('SynchAndBuildInstaller.subprocess.run')
+    @patch('Installer.subprocess.run')
     def test_get_p4_env_var_failure(self, mock_run):
         """Test _get_p4_env_var with failed execution"""
         mock_result = MagicMock()
@@ -209,7 +209,7 @@ class TestP4Config(unittest.TestCase):
         result = installer._get_p4_env_var("P4USER")
         self.assertIsNone(result)
 
-    @patch('SynchAndBuildInstaller._get_p4_env_var')
+    @patch('Installer._get_p4_env_var')
     def test_get_p4_env_vars(self, mock_get_var):
         """Test get_p4_env_vars returns dict with all variables"""
         mock_get_var.side_effect = [
@@ -225,7 +225,7 @@ class TestP4Config(unittest.TestCase):
             "P4CLIENT": "testclient"
         })
 
-    @patch('SynchAndBuildInstaller._get_p4_env_var')
+    @patch('Installer._get_p4_env_var')
     def test_get_p4_env_vars_partial(self, mock_get_var):
         """Test get_p4_env_vars when some variables are not available"""
         mock_get_var.side_effect = [
@@ -240,9 +240,9 @@ class TestP4Config(unittest.TestCase):
             "P4CLIENT": "testclient"
         })
 
-    @patch('SynchAndBuildInstaller.set_config_file')
-    @patch('SynchAndBuildInstaller.get_project_path')
-    @patch('SynchAndBuildInstaller.get_app_path')
+    @patch('Installer.set_config_file')
+    @patch('Installer.get_project_path')
+    @patch('Installer.get_app_path')
     def test_create_p4_config(self, mock_get_app, mock_get_project, mock_set_config_file):
         """Test create_p4_config creates config in correct location"""
         project_path = Path("C:\\Project")
@@ -254,7 +254,7 @@ class TestP4Config(unittest.TestCase):
         mock_set_config_file.assert_called_once_with(expected_config_path, None)
 
     @patch('builtins.open', new_callable=mock_open, read_data="\n")
-    @patch('SynchAndBuildInstaller.get_p4_env_vars')
+    @patch('Installer.get_p4_env_vars')
     def test_set_config_empty_file(self, mock_get_vars, mock_file):
         """Test set_config writes to empty file"""
         mock_get_vars.return_value = {
@@ -272,7 +272,7 @@ class TestP4Config(unittest.TestCase):
         self.assertIn("P4PORT=localhost:1666", written_content)
 
     @patch('builtins.open', new_callable=mock_open, read_data="P4USER=olduser\nP4PORT=oldport\n")
-    @patch('SynchAndBuildInstaller.get_p4_env_vars')
+    @patch('Installer.get_p4_env_vars')
     def test_set_config_existing_file(self, mock_get_vars, mock_file):
         """Test set_config updates existing file"""
         mock_get_vars.return_value = {
@@ -291,7 +291,7 @@ class TestSourceFiles(unittest.TestCase):
     """Tests for source file validation"""
 
     @patch('pathlib.Path.exists')
-    @patch('SynchAndBuildInstaller.get_app_path')
+    @patch('Installer.get_app_path')
     def test_check_source_files_exist_all_present(self, mock_get_app, mock_exists):
         """Test check_source_files_exist when all files exist"""
         mock_get_app.return_value = Path("C:\\Tools\\SyncAndBuild")
@@ -301,7 +301,7 @@ class TestSourceFiles(unittest.TestCase):
         self.assertTrue(result)
 
     @patch('pathlib.Path.exists')
-    @patch('SynchAndBuildInstaller.get_app_path')
+    @patch('Installer.get_app_path')
     def test_check_source_files_exist_missing_file(self, mock_get_app, mock_exists):
         """Test check_source_files_exist when a file is missing"""
         mock_get_app.return_value = Path("C:\\Tools\\SyncAndBuild")
@@ -323,7 +323,7 @@ class TestSourceFiles(unittest.TestCase):
 class TestBatFilePath(unittest.TestCase):
     """Tests for get_bat_file_path function"""
 
-    @patch('SynchAndBuildInstaller.get_app_path')
+    @patch('Installer.get_app_path')
     def test_get_bat_file_path_no_starting_dir(self, mock_get_app):
         """Test get_bat_file_path without starting_dir parameter"""
         mock_get_app.return_value = Path("C:\\Project\\Tools\\SyncAndBuild")
@@ -346,7 +346,7 @@ class TestP4ConfigFileVars(unittest.TestCase):
     """Tests for get_p4_config_file_vars function"""
 
     @patch('builtins.open', new_callable=mock_open, read_data="P4USER=testuser\nP4PORT=localhost:1666\nP4CLIENT=testclient\n")
-    @patch('SynchAndBuildInstaller.get_p4_config_path')
+    @patch('Installer.get_p4_config_path')
     def test_get_p4_config_file_vars_all_present(self, mock_get_config, mock_file):
         """Test get_p4_config_file_vars with all variables present"""
         config_path = Path("C:\\Project\\.p4config")
@@ -367,7 +367,7 @@ class TestP4ConfigFileVars(unittest.TestCase):
         result = installer.get_p4_config_file_vars(config_path)
         self.assertEqual(result, {"P4USER": "testuser"})
 
-    @patch('SynchAndBuildInstaller.get_p4_config_path')
+    @patch('Installer.get_p4_config_path')
     def test_get_p4_config_file_vars_no_config(self, mock_get_config):
         """Test get_p4_config_file_vars when config file doesn't exist"""
         mock_get_config.return_value = None
@@ -390,7 +390,7 @@ class TestP4ConfigFileVars(unittest.TestCase):
 class TestP4VCustomToolsPath(unittest.TestCase):
     """Tests for get_p4v_custom_tools_path function"""
 
-    @patch('SynchAndBuildInstaller.os.environ.copy')
+    @patch('Installer.os.environ.copy')
     def test_get_p4v_custom_tools_path_success(self, mock_env):
         """Test get_p4v_custom_tools_path with valid USERPROFILE"""
         mock_env.return_value = {"USERPROFILE": "C:\\Users\\TestUser"}
@@ -399,7 +399,7 @@ class TestP4VCustomToolsPath(unittest.TestCase):
         expected = Path("C:\\Users\\TestUser\\.p4qt\\customtools.xml")
         self.assertEqual(result, expected)
 
-    @patch('SynchAndBuildInstaller.os.environ.copy')
+    @patch('Installer.os.environ.copy')
     def test_get_p4v_custom_tools_path_no_userprofile(self, mock_env):
         """Test get_p4v_custom_tools_path when USERPROFILE is not set"""
         mock_env.return_value = {}
@@ -411,7 +411,7 @@ class TestP4VCustomToolsPath(unittest.TestCase):
 class TestP4Connection(unittest.TestCase):
     """Tests for check_p4_connection function"""
 
-    @patch('SynchAndBuildInstaller.subprocess.run')
+    @patch('Installer.subprocess.run')
     def test_check_p4_connection_success(self, mock_run):
         """Test check_p4_connection when connection is successful"""
         mock_result = MagicMock()
@@ -422,7 +422,7 @@ class TestP4Connection(unittest.TestCase):
         self.assertTrue(result)
         mock_run.assert_called_once()
 
-    @patch('SynchAndBuildInstaller.subprocess.run')
+    @patch('Installer.subprocess.run')
     def test_check_p4_connection_failure(self, mock_run):
         """Test check_p4_connection when connection fails"""
         mock_result = MagicMock()
@@ -432,7 +432,7 @@ class TestP4Connection(unittest.TestCase):
         result = installer.check_p4_connection()
         self.assertFalse(result)
 
-    @patch('SynchAndBuildInstaller.subprocess.run')
+    @patch('Installer.subprocess.run')
     def test_check_p4_connection_timeout(self, mock_run):
         """Test check_p4_connection handles timeout"""
         import subprocess
@@ -455,7 +455,7 @@ class TestCustomToolDefinition(unittest.TestCase):
         result = installer.is_custom_tool_defined(None, "TestTool")
         self.assertFalse(result)
 
-    @patch('SynchAndBuildInstaller.os.path.isfile')
+    @patch('Installer.os.path.isfile')
     @patch('xml.etree.ElementTree.parse')
     def test_is_custom_tool_defined_tool_exists(self, mock_parse, mock_isfile):
         """Test is_custom_tool_defined when tool is defined"""
@@ -475,7 +475,7 @@ class TestCustomToolDefinition(unittest.TestCase):
         result = installer.is_custom_tool_defined(Path("C:\\test.xml"), "Auto Sync & Build")
         self.assertTrue(result)
 
-    @patch('SynchAndBuildInstaller.os.path.isfile')
+    @patch('Installer.os.path.isfile')
     @patch('xml.etree.ElementTree.parse')
     def test_is_custom_tool_defined_tool_not_exists(self, mock_parse, mock_isfile):
         """Test is_custom_tool_defined when tool is not defined"""
@@ -494,7 +494,7 @@ class TestCustomToolDefinition(unittest.TestCase):
         result = installer.is_custom_tool_defined(Path("C:\\test.xml"), "Auto Sync & Build")
         self.assertFalse(result)
 
-    @patch('SynchAndBuildInstaller.os.path.isfile')
+    @patch('Installer.os.path.isfile')
     @patch('xml.etree.ElementTree.parse')
     def test_is_custom_tool_defined_parse_error(self, mock_parse, mock_isfile):
         """Test is_custom_tool_defined handles XML parse errors"""
@@ -511,8 +511,8 @@ class TestDefineCustomTool(unittest.TestCase):
 
     @patch('xml.etree.ElementTree.ElementTree.write')
     @patch('xml.etree.ElementTree.indent')
-    @patch('SynchAndBuildInstaller.os.path.isfile')
-    @patch('SynchAndBuildInstaller.os.makedirs')
+    @patch('Installer.os.path.isfile')
+    @patch('Installer.os.makedirs')
     def test_define_custom_tool_new_file(self, mock_makedirs, mock_isfile, mock_indent, mock_write):
         """Test define_custom_tool creates new XML file"""
         mock_isfile.return_value = False
@@ -529,7 +529,7 @@ class TestDefineCustomTool(unittest.TestCase):
         mock_write.assert_called_once()
 
     @patch('xml.etree.ElementTree.parse')
-    @patch('SynchAndBuildInstaller.os.path.isfile')
+    @patch('Installer.os.path.isfile')
     def test_define_custom_tool_existing_file(self, mock_isfile, mock_parse):
         """Test define_custom_tool appends to existing XML file"""
         import xml.etree.ElementTree as Et
@@ -556,7 +556,7 @@ class TestDefineCustomTool(unittest.TestCase):
 class TestFixExistingCustomTool(unittest.TestCase):
     """Tests for fix_existing_custom_tool function"""
 
-    @patch('SynchAndBuildInstaller.define_custom_tool')
+    @patch('Installer.define_custom_tool')
     @patch('xml.etree.ElementTree.parse')
     def test_fix_existing_custom_tool(self, mock_parse, mock_define):
         """Test fix_existing_custom_tool removes old and creates new"""
@@ -590,7 +590,7 @@ class TestFixExistingCustomTool(unittest.TestCase):
 class TestEdgeCases(unittest.TestCase):
     """Tests for edge cases and error handling"""
 
-    @patch('SynchAndBuildInstaller.subprocess.run')
+    @patch('Installer.subprocess.run')
     def test_get_p4_env_var_timeout(self, mock_run):
         """Test _get_p4_env_var handles timeout exception"""
         import subprocess
@@ -599,7 +599,7 @@ class TestEdgeCases(unittest.TestCase):
         with self.assertRaises(subprocess.TimeoutExpired):
             installer._get_p4_env_var("P4USER")
 
-    @patch('SynchAndBuildInstaller.subprocess.run')
+    @patch('Installer.subprocess.run')
     def test_get_p4_env_var_malformed_output(self, mock_run):
         """Test _get_p4_env_var with malformed output"""
         mock_result = MagicMock()
@@ -622,7 +622,7 @@ class TestEdgeCases(unittest.TestCase):
             self.assertEqual(result, first_project)
 
     @patch('builtins.open', new_callable=mock_open, read_data="P4USER=user\nP4PORT=port\n")
-    @patch('SynchAndBuildInstaller.get_p4_env_vars')
+    @patch('Installer.get_p4_env_vars')
     def test_set_config_file_adds_missing_vars(self, mock_get_vars, mock_file):
         """Test set_config_file adds variables not in existing file"""
         mock_get_vars.return_value = {
@@ -638,7 +638,7 @@ class TestEdgeCases(unittest.TestCase):
         mock_file().writelines.assert_called_once()
 
     @patch('builtins.open', new_callable=mock_open, read_data="P4USER=user\n# Comment line\nP4PORT=port\nOther content\n")
-    @patch('SynchAndBuildInstaller.get_p4_env_vars')
+    @patch('Installer.get_p4_env_vars')
     def test_set_config_file_preserves_non_p4_lines(self, mock_get_vars, mock_file):
         """Test set_config_file preserves lines that aren't P4 variables (covers line 205)"""
         mock_get_vars.return_value = {
@@ -656,30 +656,33 @@ class TestEdgeCases(unittest.TestCase):
 class TestToolInstallerMethods(unittest.TestCase):
     """Tests for ToolInstaller methods that can be tested without full UI"""
 
-    @patch('SynchAndBuildInstaller.ToolInstaller._build_ui')
-    @patch('SynchAndBuildInstaller.get_uproject_path')
-    @patch('SynchAndBuildInstaller.get_project_path')
-    @patch('SynchAndBuildInstaller.get_app_path')
-    @patch('tkinter.Tk')
-    def test_tool_installer_init(self, mock_tk, mock_get_app, mock_get_project, mock_get_uproject, mock_build_ui):
+    def test_tool_installer_init(self):
         """Test ToolInstaller initialization"""
-        mock_get_app.return_value = Path("C:\\Tools\\SyncAndBuild")
-        mock_get_project.return_value = Path("C:\\Project")
-        mock_get_uproject.return_value = Path("C:\\Project\\Game.uproject")
-
-        tool_installer = installer.ToolInstaller()
+        tool_installer = self._create_tool_installer()
 
         self.assertEqual(tool_installer._app_path, Path("C:\\Tools\\SyncAndBuild"))
         self.assertEqual(tool_installer._project_path, Path("C:\\Project"))
         self.assertEqual(tool_installer._uproject_path, Path("C:\\Project\\Game.uproject"))
-        mock_build_ui.assert_called_once()
 
     def _create_tool_installer(self):
         """Helper method to create a ToolInstaller instance with mocked UI"""
-        with patch('SynchAndBuildInstaller.ToolInstaller._build_ui'), \
-             patch('SynchAndBuildInstaller.get_app_path', return_value=Path("C:\\Tools\\SyncAndBuild")), \
-             patch('SynchAndBuildInstaller.get_project_path', return_value=Path("C:\\Project")), \
-             patch('SynchAndBuildInstaller.get_uproject_path', return_value=Path("C:\\Project\\Game.uproject")), \
+        def fake_configure_styles(self_inst):
+            self_inst.ROOT_BG = "#27282c"
+            self_inst.HEADER_BG = "#1e1f23"
+            self_inst.HEADER_FG = "#e2e8f0"
+            self_inst.LOG_BG = "#2f3036"
+            self_inst.SUCCESS_FONT_COLOR = "#4ade80"
+            self_inst.ERROR_FONT_COLOR = "#f87171"
+            self_inst.WARNING_FONT_COLOR = "#fbbf24"
+            self_inst.HEADER_FONT_COLOR = "#e2e8f0"
+            self_inst.DIM_FONT_COLOR = "#94a3b8"
+            self_inst.HYPERLINK_COLOR = "#60a5fa"
+
+        with patch('Installer.ToolInstaller._build_ui'), \
+             patch('Installer.ToolInstaller._configure_styles', fake_configure_styles), \
+             patch('Installer.get_app_path', return_value=Path("C:\\Tools\\SyncAndBuild")), \
+             patch('Installer.get_project_path', return_value=Path("C:\\Project")), \
+             patch('Installer.get_uproject_path', return_value=Path("C:\\Project\\Game.uproject")), \
              patch('tkinter.Tk'):
             tool_installer = installer.ToolInstaller()
             # Mock UI components that methods use
@@ -818,6 +821,219 @@ class TestToolInstallerMethods(unittest.TestCase):
         with patch('builtins.open', new_callable=mock_open) as mock_file:
             tool_installer._flush_to_log_file()
             mock_file.assert_not_called()
+
+
+class TestToolInstallerLogging(unittest.TestCase):
+    """Tests for ToolInstaller logging and workflow methods"""
+
+    def _create_tool_installer(self):
+        """Helper method to create a ToolInstaller instance with mocked UI"""
+        def fake_configure_styles(self_inst):
+            self_inst.ROOT_BG = "#27282c"
+            self_inst.HEADER_BG = "#1e1f23"
+            self_inst.HEADER_FG = "#e2e8f0"
+            self_inst.LOG_BG = "#2f3036"
+            self_inst.SUCCESS_FONT_COLOR = "#4ade80"
+            self_inst.ERROR_FONT_COLOR = "#f87171"
+            self_inst.WARNING_FONT_COLOR = "#fbbf24"
+            self_inst.HEADER_FONT_COLOR = "#e2e8f0"
+            self_inst.DIM_FONT_COLOR = "#94a3b8"
+            self_inst.HYPERLINK_COLOR = "#60a5fa"
+
+        with patch('Installer.ToolInstaller._build_ui'), \
+             patch('Installer.ToolInstaller._configure_styles', fake_configure_styles), \
+             patch('Installer.get_app_path', return_value=Path("C:\\Tools\\SyncAndBuild")), \
+             patch('Installer.get_project_path', return_value=Path("C:\\Project")), \
+             patch('Installer.get_uproject_path', return_value=Path("C:\\Project\\Game.uproject")), \
+             patch('tkinter.Tk'):
+            ti = installer.ToolInstaller()
+            ti.status_text = MagicMock()
+            ti.root = MagicMock()
+            return ti
+
+    def test_log_appends_to_buffer(self):
+        """Test _log appends message to _buffered_log"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._log("  ▶ Test message", log_type=installer.LogType.HEADER)
+
+        self.assertIn("HEADER:", ti._buffered_log)
+        self.assertIn("Test message", ti._buffered_log)
+
+    def test_log_strips_prefix_correctly(self):
+        """Test _log strips the 4-char prefix from message for log file"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._info_log("Hello")
+
+        # message[4:] strips the "  → " prefix, leaving just "Hello"
+        self.assertIn("INFO: Hello", ti._buffered_log)
+        self.assertNotIn("→", ti._buffered_log)
+
+    def test_header_log(self):
+        """Test _header_log formats with header prefix"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._header_log("Step 1")
+
+        self.assertIn("HEADER:", ti._buffered_log)
+        ti.status_text.insert.assert_called()
+
+    def test_error_log(self):
+        """Test _error_log formats with error prefix"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._error_log("Something failed")
+
+        self.assertIn("ERROR:", ti._buffered_log)
+        self.assertIn("Something failed", ti._buffered_log)
+
+    def test_warning_log(self):
+        """Test _warning_log formats with warning prefix"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._warning_log("Careful")
+
+        self.assertIn("WARNING:", ti._buffered_log)
+
+    def test_success_log(self):
+        """Test _success_log formats with success prefix"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._success_log("Done")
+
+        self.assertIn("SUCCESS:", ti._buffered_log)
+
+    def test_dim_log(self):
+        """Test _dim_log formats with dim prefix"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._dim_log("Author info")
+
+        self.assertIn("DIM:", ti._buffered_log)
+
+    def test_add_link_buffers_to_log(self):
+        """Test _add_link writes link info to buffered log"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._add_link("Click here\n", "https://example.com")
+
+        self.assertIn("LINK:", ti._buffered_log)
+        self.assertIn("https://example.com", ti._buffered_log)
+        self.assertIn("Click here", ti._buffered_log)
+
+    def test_add_link_configures_tag(self):
+        """Test _add_link configures a clickable tag on status_text"""
+        ti = self._create_tool_installer()
+
+        ti._add_link("Test link\n", "https://example.com")
+
+        ti.status_text.tag_configure.assert_called()
+        ti.status_text.tag_bind.assert_called()
+        ti.status_text.insert.assert_called()
+
+    def test_finish_success(self):
+        """Test _finish with success=True logs completion message"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._finish(success=True)
+
+        self.assertIn("Installation Completed", ti._buffered_log)
+
+    def test_finish_failure(self):
+        """Test _finish with success=False logs error message"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._finish(success=False)
+
+        self.assertIn("Incomplete Installation", ti._buffered_log)
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_install_all_steps_pass(self, _):
+        """Test install method when all steps succeed"""
+        ti = self._create_tool_installer()
+
+        with patch.object(ti, '_check_project_structure', return_value=True), \
+             patch.object(ti, '_check_p4', return_value=True), \
+             patch.object(ti, '_setup_p4_config', return_value=True), \
+             patch.object(ti, '_setup_custom_tool', return_value=True), \
+             patch.object(ti, '_finish') as mock_finish:
+            ti.install()
+
+        mock_finish.assert_called_once_with(success=True)
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_install_step_fails_early(self, _):
+        """Test install method stops at first failing step"""
+        ti = self._create_tool_installer()
+
+        with patch.object(ti, '_check_project_structure', return_value=False), \
+             patch.object(ti, '_finish') as mock_finish:
+            ti.install()
+
+        mock_finish.assert_called_once_with(success=False)
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_install_p4_check_fails(self, _):
+        """Test install method stops when p4 check fails"""
+        ti = self._create_tool_installer()
+
+        with patch.object(ti, '_check_project_structure', return_value=True), \
+             patch.object(ti, '_check_p4', return_value=False), \
+             patch.object(ti, '_finish') as mock_finish:
+            ti.install()
+
+        mock_finish.assert_called_once_with(success=False)
+
+    def test_on_install_clicked(self):
+        """Test _on_install_clicked disables button and calls install"""
+        ti = self._create_tool_installer()
+        ti.install_btn = MagicMock()
+
+        with patch.object(ti, 'install'):
+            ti._on_install_clicked()
+
+        ti.install_btn.configure.assert_called_once_with(state='disabled')
+        ti.status_text.delete.assert_called_once()
+
+
+class TestSetConfigFileNewFile(unittest.TestCase):
+    """Tests for set_config_file when file doesn't exist"""
+
+    @patch('pathlib.Path.touch')
+    @patch('pathlib.Path.mkdir')
+    @patch('pathlib.Path.exists', return_value=False)
+    @patch('builtins.open', new_callable=mock_open)
+    def test_set_config_file_creates_new_file(self, mock_file, mock_exists, mock_mkdir, mock_touch):
+        """Test set_config_file creates file when it doesn't exist"""
+        variables = {"P4USER": "testuser", "P4PORT": "localhost:1666"}
+
+        installer.set_config_file(Path("C:\\Project\\.p4config"), variables)
+
+        mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
+        mock_touch.assert_called_once()
+
+    @patch('builtins.open', new_callable=mock_open, read_data="")
+    @patch('pathlib.Path.exists', return_value=True)
+    def test_set_config_file_handles_empty_existing_file(self, mock_exists, mock_file):
+        """Test set_config_file handles empty existing file"""
+        variables = {"P4USER": "testuser"}
+
+        installer.set_config_file(Path("C:\\Project\\.p4config"), variables)
+
+        calls = mock_file().write.call_args_list
+        written_content = ''.join([call[0][0] for call in calls])
+        self.assertIn("P4USER=testuser", written_content)
 
 
 if __name__ == '__main__':

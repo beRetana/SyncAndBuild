@@ -626,6 +626,8 @@ class ToolInstaller:
         self.status_text.configure(state=tk.NORMAL)
         self.status_text.insert(tk.END, text, tag_name)
         self.status_text.configure(state=tk.DISABLED)
+
+        self._buffered_log += f"LINK: {text.strip()} -> {url}\n"
         
     def _check_project_structure(self)-> bool:
         """Check if the project structure is correct"""
@@ -805,7 +807,7 @@ class ToolInstaller:
         
         self.status_text.configure(state=tk.NORMAL)
         self.status_text.insert(tk.END, f"{message}\n", log_type.name)
-        self.status_text.configure(state=tk.DISABLED)
+        self.status_text.see(tk.END)
         self.status_text.configure(state=tk.DISABLED)
 
         self._buffered_log += f"{log_type.name}: {message[4:]}\n"
