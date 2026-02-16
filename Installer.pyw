@@ -3,8 +3,8 @@ import subprocess
 import sys
 import webbrowser
 import xml.etree.ElementTree as Et
-from pathlib import Path
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk, messagebox
 from enum import Enum
 
@@ -231,21 +231,27 @@ def check_source_files_exist(app_path=None)-> bool:
 
     return True
 
-def check_p4_connection()-> bool:
+def check_p4_connection(credentials: dict=None)-> bool:
     """Check if the p4 CLI is connected to the server"""
-    
-    env = os.environ.copy()
-    result = subprocess.run(
-        ["p4", "info"],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=P4_TIME_OUT)
-    
-    if result.returncode != 0:
+
+    if credentials is None:
+        credentials = get_p4_config_file_vars()
+
+    if len(credentials) < 3:
         return False
-    
-    return True
+
+    user = credentials.get(P4_USER, "")
+    client = credentials.get(P4_CLIENT, "")
+    port = credentials.get(P4_PORT, "")
+
+    result = subprocess.run(
+        ["p4", "-p", port, "-u", user, "-c", client, "client", "-o"],
+        capture_output=True,
+        timeout=P4_TIME_OUT,
+        creationflags=subprocess.CREATE_NO_WINDOW
+    )
+
+    return result.returncode == 0
 
 def is_custom_tool_defined(custom_tool_file: Path, custom_tool_name: str)-> bool:
     """Check if a custom tool is defined in p4v"""
@@ -395,11 +401,12 @@ class P4ConfigUI(tk.Toplevel):
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(column=0, row=6, columnspan=2, pady=(20, 0))
 
-        ttk.Button(
+        self.btn_accept = (ttk.Button(
             btn_frame,
             text="Accept",
             command=self._on_accept
-        ).pack(side=tk.LEFT, padx=5)
+        ))
+        self.btn_accept.pack(side=tk.LEFT, padx=5)
 
         ttk.Button(
             btn_frame,
@@ -424,20 +431,34 @@ class P4ConfigUI(tk.Toplevel):
         self.wait_window()
 
     def _on_accept(self):
-        self.result = {
-            "P4PORT": self.p4port_var.get().strip(),
-            "P4USER": self.p4user_var.get().strip(),
-            "P4CLIENT": self.p4client_var.get().strip()
+
+        self.btn_accept.config(state=tk.DISABLED)
+
+        test_credentials = {
+            P4_PORT: self.p4port_var.get().strip(),
+            P4_USER: self.p4user_var.get().strip(),
+            P4_CLIENT: self.p4client_var.get().strip()
         }
 
-        if all(self.result.values()):
-            self.destroy()
-        else:
+        if not all(test_credentials.values()):
             messagebox.showerror(
                 "Error",
                 "All fields are required",
                 parent=self
             )
+            self.btn_accept.config(state=tk.NORMAL)
+        else:
+            if not check_p4_connection(test_credentials):
+                messagebox.showerror(
+                    "Error",
+                    "Invalid credentials",
+                    parent=self
+                )
+                self.btn_accept.config(state=tk.NORMAL)
+            else:
+                self.result = test_credentials
+                self.destroy()
+
     def _on_cancel(self):
         self.result = None
         self.destroy()
@@ -452,7 +473,7 @@ class LogType(Enum):
 
 class ToolInstaller:
 
-    TOOL_NAME = "Auto Sync & Build"
+    TOOL_NAME = "Auto Sync And Build"
     P4_LINK = "https://portal.perforce.com/s/downloads?utm_medium=cpc&utm_source=googleadwords&utm_campaign=VCS-Branded-Perforce-NA&utm_term=perforce%20server&utm_adgroup=VCS-Perforce-NA-Trial-Search&product=Helix%20Command-Line%20Client%20%28P4%29&_gl=1*1pn1y6z*_gcl_au*MzI3MTM0MTAyLjE3NzEwOTY5Mjg.*_ga*NTE2NDg4NTc5LjE3NjExOTY3ODY.*_ga_HNP3GCZ70D*czE3NzEwOTY5MjckbzgkZzEkdDE3NzEwOTY5NTQkajMzJGwwJGgzMzU1NTU1NDM."
     P4V_LINK = "https://portal.perforce.com/s/downloads?product=Helix%20Visual%20Client%20%28P4V%29"
     WINDOW_WIDTH = 750
@@ -660,7 +681,7 @@ class ToolInstaller:
     
     def _check_p4(self)-> bool:
 
-        self._header_log("Step 2: Checking for correct P4, and P4V installation...")
+        self._header_log("Step 3: Checking for correct P4, and P4V installation...")
         
         self._info_log("Checking for p4 CLI...")
         p4_path = get_p4_path()
@@ -670,12 +691,6 @@ class ToolInstaller:
             self._add_link("Helix Command-Line Client\n", self.P4_LINK)
             return False
         self._success_log("p4 CLI found at: " + str(p4_path))
-
-        self._info_log("Checking for p4 CLI connection...")
-        if not check_p4_connection():
-            self._error_log("p4 CLI is not connected to the server.")
-            return False
-        self._success_log("p4 CLI is connected to the server.")
 
         self._info_log("Checking for p4v...")
         p4v_path = get_p4v_path()
@@ -691,7 +706,7 @@ class ToolInstaller:
     def _setup_p4_config(self)-> bool:
         """Check if the p4 config file exists"""
 
-        self._header_log("Step 3: Setting up p4config credentials")
+        self._header_log("Step 2: Setting up p4config credentials")
         self._info_log("Searching for p4 config file...")
 
         config_path = get_p4_config_path(self._project_path)
@@ -703,40 +718,23 @@ class ToolInstaller:
             self._info_log(".p4config file created at: " + str(config_path))
         else:
             self._success_log("Found .p4config file")
-            self._info_log("Checking if credentials are correct...")
-
-        file_variables = get_p4_config_file_vars(config_path)
-
-        match len(file_variables):
-            case 3:
-                self._success_log("Found All credentials in .p4config file.")
+            self._info_log("Validating credentials in .p4config file...")
+            if check_p4_connection():
+                self._success_log(".p4config credentials are valid.")
                 return True
-            case 0:
-                self._warning_log("All credentials in .p4config are missing")
-            case _:
-                self._warning_log("Some credentials in .p4config are missing")
+            else:
+                self._error_log("Invalid credentials in .p4config file.")
 
-        self._info_log("Searching for credentials in environment variables...")
-        env_variables = get_p4_env_vars()
-
-        for key, value in file_variables.items():
-            env_variables[key] = value
-
-        if len(env_variables) == 3:
-            self._success_log("Found All credentials.")
-            self._info_log("Setting config file with found credentials.")
-            set_config_file(config_path, env_variables)
-            self._success_log(".p4config credentials set successfully.")
-            return True
+        file_variables = {}
 
         self._warning_log("Credentials are still needed, user input required.")
 
-        result = P4ConfigUI(self._app_path.parent, env_variables).result
+        result = P4ConfigUI(self.root, file_variables).result
+
         if result is None or len(result) != 3:
             self._error_log("Failed to obtain credentials from user input, aborting installation.")
             return False
 
-        self._success_log("Credentials set successfully.")
         self._info_log("Setting config file with credentials.")
         set_config_file(config_path, result)
         self._success_log(".p4config credentials set successfully.")
@@ -830,7 +828,9 @@ class ToolInstaller:
         else:
             self._error_log("Incomplete Installation — Check errors above or log file")
             self._info_log(f"Log File can be found at: {str(self._log_file_path)}")
+
         self._log("="*48, log_type=LogType.INFO)
+        self._flush_to_log_file()
 
     def _on_install_clicked(self):
         self.install_btn.configure(state=tk.DISABLED)
@@ -842,28 +842,31 @@ class ToolInstaller:
     def install(self):
         """Install the tool"""
 
-        self._clean_log_file()
-        self._log("="*48, log_type=LogType.INFO)
-        self._header_log(f"{ToolInstaller.TOOL_NAME} - Installer")
-        self._dim_log(f"Author: Brandon Eduardo Retana García")
-        self._log("=" * 48, log_type=LogType.INFO)
-        self._log("", log_type=LogType.INFO)
+        try:
+            self._clean_log_file()
+            self._log("=" * 48, log_type=LogType.INFO)
+            self._header_log(f"{ToolInstaller.TOOL_NAME} - Installer")
+            self._dim_log(f"Author: Brandon Eduardo Retana García")
+            self._log("=" * 48, log_type=LogType.INFO)
+            self._log("", log_type=LogType.INFO)
 
-        installation_steps = [
-            self._check_project_structure,
-            self._check_p4,
-            self._setup_p4_config,
-            self._setup_custom_tool]
+            installation_steps = [
+                self._check_project_structure,
+                self._setup_p4_config,
+                self._check_p4,
+                self._setup_custom_tool]
 
-        for step in installation_steps:
-            self._flush_to_log_file()
-            if not step():
-                self._finish(success=False)
+            for step in installation_steps:
                 self._flush_to_log_file()
-                return
+                if not step():
+                    self._finish(success=False)
+                    return
 
-        self._finish(success=True)
-        self._flush_to_log_file()
+            self._finish(success=True)
+
+        except Exception as e:
+            self._error_log(f"An unexpected error occurred: {str(e)}")
+            self._finish(success=False)
     
     def run(self):
         self.root.mainloop()

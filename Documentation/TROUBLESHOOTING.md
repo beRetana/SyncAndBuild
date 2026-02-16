@@ -576,7 +576,7 @@ Provide:
 ### Check for Updates
 
 - See if issue is fixed in newer version
-- Check `CHANGELOG.md` for bug fixes
+- Check `CHANGE_LOG.md` for bug fixes
 - Update to latest version
 
 ---

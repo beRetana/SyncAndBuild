@@ -5,6 +5,5 @@ if %ERRORLEVEL% NEQ 0 (
     pause >nul
     exit /b 1
 )
-
 start "" pythonw "%~dp0Installer.pyw"
 exit /b 0

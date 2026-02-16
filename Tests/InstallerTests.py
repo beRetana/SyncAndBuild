@@ -418,7 +418,8 @@ class TestP4Connection(unittest.TestCase):
         mock_result.returncode = 0
         mock_run.return_value = mock_result
 
-        result = installer.check_p4_connection()
+        credentials = {"P4USER": "user", "P4PORT": "port", "P4CLIENT": "client"}
+        result = installer.check_p4_connection(credentials)
         self.assertTrue(result)
         mock_run.assert_called_once()
 
@@ -429,7 +430,13 @@ class TestP4Connection(unittest.TestCase):
         mock_result.returncode = 1
         mock_run.return_value = mock_result
 
-        result = installer.check_p4_connection()
+        credentials = {"P4USER": "user", "P4PORT": "port", "P4CLIENT": "client"}
+        result = installer.check_p4_connection(credentials)
+        self.assertFalse(result)
+
+    def test_check_p4_connection_insufficient_credentials(self):
+        """Test check_p4_connection returns False with less than 3 credentials"""
+        result = installer.check_p4_connection({"P4USER": "user"})
         self.assertFalse(result)
 
     @patch('Installer.subprocess.run')
@@ -438,8 +445,9 @@ class TestP4Connection(unittest.TestCase):
         import subprocess
         mock_run.side_effect = subprocess.TimeoutExpired("p4 info", installer.P4_TIME_OUT)
 
+        credentials = {"P4USER": "user", "P4PORT": "port", "P4CLIENT": "client"}
         with self.assertRaises(subprocess.TimeoutExpired):
-            installer.check_p4_connection()
+            installer.check_p4_connection(credentials)
 
 
 class TestCustomToolDefinition(unittest.TestCase):
@@ -725,12 +733,11 @@ class TestToolInstallerMethods(unittest.TestCase):
             self.assertFalse(result)
 
     def test_check_p4_success(self):
-        """Test _check_p4 when all P4 checks pass"""
+        """Test _check_p4 when p4 and p4v are found"""
         tool_installer = self._create_tool_installer()
 
         with patch.object(installer, 'get_p4_path', return_value=Path("C:\\p4.exe")), \
-             patch.object(installer, 'get_p4v_path', return_value=Path("C:\\p4v.exe")), \
-             patch.object(installer, 'check_p4_connection', return_value=True):
+             patch.object(installer, 'get_p4v_path', return_value=Path("C:\\p4v.exe")):
             result = tool_installer._check_p4()
             self.assertTrue(result)
 
@@ -742,22 +749,12 @@ class TestToolInstallerMethods(unittest.TestCase):
             result = tool_installer._check_p4()
             self.assertFalse(result)
 
-    def test_check_p4_no_connection(self):
-        """Test _check_p4 when p4 connection fails"""
-        tool_installer = self._create_tool_installer()
-
-        with patch.object(installer, 'get_p4_path', return_value=Path("C:\\p4.exe")), \
-             patch.object(installer, 'check_p4_connection', return_value=False):
-            result = tool_installer._check_p4()
-            self.assertFalse(result)
-
     def test_check_p4_no_p4v(self):
         """Test _check_p4 when p4v is not found"""
         tool_installer = self._create_tool_installer()
 
         with patch.object(installer, 'get_p4_path', return_value=Path("C:\\p4.exe")), \
-             patch.object(installer, 'get_p4v_path', return_value=None), \
-             patch.object(installer, 'check_p4_connection', return_value=True):
+             patch.object(installer, 'get_p4v_path', return_value=None):
             result = tool_installer._check_p4()
             self.assertFalse(result)
 
@@ -940,23 +937,28 @@ class TestToolInstallerLogging(unittest.TestCase):
         ti.status_text.tag_bind.assert_called()
         ti.status_text.insert.assert_called()
 
-    def test_finish_success(self):
+    @patch('builtins.open', new_callable=mock_open)
+    def test_finish_success(self, mock_file):
         """Test _finish with success=True logs completion message"""
         ti = self._create_tool_installer()
         ti._buffered_log = ""
 
         ti._finish(success=True)
 
-        self.assertIn("Installation Completed", ti._buffered_log)
+        # _flush_to_log_file writes and clears buffer, so check what was written to file
+        written = ''.join(call[0][0] for call in mock_file().write.call_args_list)
+        self.assertIn("Installation Completed", written)
 
-    def test_finish_failure(self):
+    @patch('builtins.open', new_callable=mock_open)
+    def test_finish_failure(self, mock_file):
         """Test _finish with success=False logs error message"""
         ti = self._create_tool_installer()
         ti._buffered_log = ""
 
         ti._finish(success=False)
 
-        self.assertIn("Incomplete Installation", ti._buffered_log)
+        written = ''.join(call[0][0] for call in mock_file().write.call_args_list)
+        self.assertIn("Incomplete Installation", written)
 
     @patch('builtins.open', new_callable=mock_open)
     def test_install_all_steps_pass(self, _):
@@ -989,6 +991,7 @@ class TestToolInstallerLogging(unittest.TestCase):
         ti = self._create_tool_installer()
 
         with patch.object(ti, '_check_project_structure', return_value=True), \
+             patch.object(ti, '_setup_p4_config', return_value=True), \
              patch.object(ti, '_check_p4', return_value=False), \
              patch.object(ti, '_finish') as mock_finish:
             ti.install()
@@ -1034,6 +1037,218 @@ class TestSetConfigFileNewFile(unittest.TestCase):
         calls = mock_file().write.call_args_list
         written_content = ''.join([call[0][0] for call in calls])
         self.assertIn("P4USER=testuser", written_content)
+
+
+class TestGetAppPathLocation(unittest.TestCase):
+    """Tests for get_app_path with the location parameter"""
+
+    @patch('pathlib.Path.is_dir', return_value=True)
+    def test_get_app_path_valid_location(self, _):
+        """Test get_app_path returns location when it's a valid directory"""
+        result = installer.get_app_path("C:\\CustomLocation")
+        self.assertEqual(result, Path("C:\\CustomLocation"))
+
+    @patch('Installer.os.path.dirname', return_value="C:\\Scripts")
+    @patch('Installer.os.path.realpath', return_value="C:\\Scripts\\Installer.pyw")
+    def test_get_app_path_invalid_location_falls_through(self, _, __):
+        """Test get_app_path falls through when location is not a valid directory"""
+        with patch('pathlib.Path.is_dir', return_value=False):
+            result = installer.get_app_path("C:\\NonExistent")
+            # Should fall through to script path logic
+            self.assertEqual(result, Path("C:\\Scripts"))
+
+    def test_get_app_path_empty_string_location(self):
+        """Test get_app_path with empty string skips location check"""
+        with patch('Installer.os.path.dirname', return_value="C:\\Scripts"), \
+             patch('Installer.os.path.realpath', return_value="C:\\Scripts\\Installer.pyw"):
+            result = installer.get_app_path("")
+            self.assertEqual(result, Path("C:\\Scripts"))
+
+
+class TestCheckP4ConnectionEdgeCases(unittest.TestCase):
+    """Tests for check_p4_connection default credentials flow"""
+
+    @patch('Installer.get_p4_config_file_vars')
+    def test_check_p4_connection_no_credentials_uses_config(self, mock_get_vars):
+        """Test check_p4_connection calls get_p4_config_file_vars when no credentials given"""
+        mock_get_vars.return_value = {}
+        result = installer.check_p4_connection()
+        self.assertFalse(result)
+        mock_get_vars.assert_called_once()
+
+    @patch('Installer.subprocess.run')
+    def test_check_p4_connection_empty_values(self, mock_run):
+        """Test check_p4_connection uses empty strings for missing keys"""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run.return_value = mock_result
+
+        credentials = {"P4USER": "user", "P4PORT": "port", "P4CLIENT": "client"}
+        installer.check_p4_connection(credentials)
+
+        call_args = mock_run.call_args[0][0]
+        self.assertIn("-p", call_args)
+        self.assertIn("port", call_args)
+        self.assertIn("-u", call_args)
+        self.assertIn("user", call_args)
+
+
+class TestInstallExceptionHandling(unittest.TestCase):
+    """Tests for install() exception handling"""
+
+    def _create_tool_installer(self):
+        def fake_configure_styles(self_inst):
+            self_inst.ROOT_BG = "#27282c"
+            self_inst.HEADER_BG = "#1e1f23"
+            self_inst.HEADER_FG = "#e2e8f0"
+            self_inst.LOG_BG = "#2f3036"
+            self_inst.SUCCESS_FONT_COLOR = "#4ade80"
+            self_inst.ERROR_FONT_COLOR = "#f87171"
+            self_inst.WARNING_FONT_COLOR = "#fbbf24"
+            self_inst.HEADER_FONT_COLOR = "#e2e8f0"
+            self_inst.DIM_FONT_COLOR = "#94a3b8"
+            self_inst.HYPERLINK_COLOR = "#60a5fa"
+
+        with patch('Installer.ToolInstaller._build_ui'), \
+             patch('Installer.ToolInstaller._configure_styles', fake_configure_styles), \
+             patch('Installer.get_app_path', return_value=Path("C:\\Tools\\SyncAndBuild")), \
+             patch('Installer.get_project_path', return_value=Path("C:\\Project")), \
+             patch('Installer.get_uproject_path', return_value=Path("C:\\Project\\Game.uproject")), \
+             patch('tkinter.Tk'):
+            ti = installer.ToolInstaller()
+            ti.status_text = MagicMock()
+            ti.root = MagicMock()
+            return ti
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_install_handles_exception(self, _):
+        """Test install catches unexpected exceptions and calls _finish(success=False)"""
+        ti = self._create_tool_installer()
+
+        with patch.object(ti, '_check_project_structure', side_effect=RuntimeError("Unexpected")), \
+             patch.object(ti, '_finish') as mock_finish:
+            ti.install()
+
+        mock_finish.assert_called_once_with(success=False)
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_install_setup_p4_config_fails(self, _):
+        """Test install stops when _setup_p4_config fails"""
+        ti = self._create_tool_installer()
+
+        with patch.object(ti, '_check_project_structure', return_value=True), \
+             patch.object(ti, '_setup_p4_config', return_value=False), \
+             patch.object(ti, '_finish') as mock_finish:
+            ti.install()
+
+        mock_finish.assert_called_once_with(success=False)
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_install_setup_custom_tool_fails(self, _):
+        """Test install stops when _setup_custom_tool fails"""
+        ti = self._create_tool_installer()
+
+        with patch.object(ti, '_check_project_structure', return_value=True), \
+             patch.object(ti, '_setup_p4_config', return_value=True), \
+             patch.object(ti, '_check_p4', return_value=True), \
+             patch.object(ti, '_setup_custom_tool', return_value=False), \
+             patch.object(ti, '_finish') as mock_finish:
+            ti.install()
+
+        mock_finish.assert_called_once_with(success=False)
+
+    @patch('builtins.open', new_callable=mock_open)
+    def test_install_flushes_log_between_steps(self, mock_file):
+        """Test install calls _flush_to_log_file between steps"""
+        ti = self._create_tool_installer()
+
+        with patch.object(ti, '_check_project_structure', return_value=True), \
+             patch.object(ti, '_setup_p4_config', return_value=True), \
+             patch.object(ti, '_check_p4', return_value=True), \
+             patch.object(ti, '_setup_custom_tool', return_value=True), \
+             patch.object(ti, '_flush_to_log_file') as mock_flush, \
+             patch.object(ti, '_finish'):
+            ti.install()
+
+        # _flush_to_log_file should be called once per step (4 steps)
+        self.assertEqual(mock_flush.call_count, 4)
+
+
+class TestLogMessageSlicing(unittest.TestCase):
+    """Tests for _log message[4:] slicing behavior"""
+
+    def _create_tool_installer(self):
+        def fake_configure_styles(self_inst):
+            self_inst.ROOT_BG = "#27282c"
+            self_inst.HEADER_BG = "#1e1f23"
+            self_inst.HEADER_FG = "#e2e8f0"
+            self_inst.LOG_BG = "#2f3036"
+            self_inst.SUCCESS_FONT_COLOR = "#4ade80"
+            self_inst.ERROR_FONT_COLOR = "#f87171"
+            self_inst.WARNING_FONT_COLOR = "#fbbf24"
+            self_inst.HEADER_FONT_COLOR = "#e2e8f0"
+            self_inst.DIM_FONT_COLOR = "#94a3b8"
+            self_inst.HYPERLINK_COLOR = "#60a5fa"
+
+        with patch('Installer.ToolInstaller._build_ui'), \
+             patch('Installer.ToolInstaller._configure_styles', fake_configure_styles), \
+             patch('Installer.get_app_path', return_value=Path("C:\\Tools\\SyncAndBuild")), \
+             patch('Installer.get_project_path', return_value=Path("C:\\Project")), \
+             patch('Installer.get_uproject_path', return_value=Path("C:\\Project\\Game.uproject")), \
+             patch('tkinter.Tk'):
+            ti = installer.ToolInstaller()
+            ti.status_text = MagicMock()
+            ti.root = MagicMock()
+            return ti
+
+    def test_each_log_type_strips_4char_prefix(self):
+        """Test all log helpers strip their 4-char prefix via message[4:]"""
+        ti = self._create_tool_installer()
+
+        test_cases = [
+            (ti._header_log, "HEADER", "TestHeader"),
+            (ti._info_log, "INFO", "TestInfo"),
+            (ti._warning_log, "WARNING", "TestWarning"),
+            (ti._success_log, "SUCCESS", "TestSuccess"),
+            (ti._error_log, "ERROR", "TestError"),
+            (ti._dim_log, "DIM", "TestDim"),
+        ]
+
+        for log_fn, log_type, msg in test_cases:
+            ti._buffered_log = ""
+            log_fn(msg)
+            self.assertEqual(
+                ti._buffered_log,
+                f"{log_type}: {msg}\n",
+                f"Failed for {log_type}: expected clean message, got: {ti._buffered_log!r}"
+            )
+
+    def test_log_with_empty_string(self):
+        """Test _log with empty string (used by separators in _finish)"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        ti._log("", log_type=installer.LogType.INFO)
+
+        # message[4:] of "" is still "", so buffer gets "INFO: \n"
+        self.assertEqual(ti._buffered_log, "INFO: \n")
+
+    def test_log_with_separator(self):
+        """Test _log with separator string loses first 4 chars"""
+        ti = self._create_tool_installer()
+        ti._buffered_log = ""
+
+        separator = "=" * 48
+        ti._log(separator, log_type=installer.LogType.INFO)
+
+        # message[4:] removes first 4 '=' signs
+        self.assertEqual(ti._buffered_log, f"INFO: {'=' * 44}\n")
+
+    def test_log_calls_see_end(self):
+        """Test _log calls status_text.see(END) for auto-scroll"""
+        ti = self._create_tool_installer()
+        ti._log("  → Test", log_type=installer.LogType.INFO)
+        ti.status_text.see.assert_called_with('end')
 
 
 if __name__ == '__main__':

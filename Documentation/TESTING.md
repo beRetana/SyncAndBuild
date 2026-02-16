@@ -1,4 +1,4 @@
-# Testing Guide - AutoSyncBuild v2.0
+# Testing Guide - AutoSyncBuild
 
 This document provides comprehensive information about the testing infrastructure for the AutoSyncBuild tool.
 
@@ -391,4 +391,4 @@ Include:
 
 ---
 
-*Last updated: 2026-01-03 | Version: 2.0 | Coverage: 97.3%*
+*Last updated: 2026-01-03 | Version: 2.0 *
