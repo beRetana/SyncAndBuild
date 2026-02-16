@@ -356,7 +356,7 @@ class P4ConfigUI(tk.Toplevel):
             frame,
             text="ej: perforce.server.unreal:1666",
             foreground="gray"
-        ).grid( column=0, row=2, sticky=tk.W)
+        ).grid( column=1, row=2, sticky=tk.W)
 
         ttk.Label(
             frame,
@@ -388,7 +388,7 @@ class P4ConfigUI(tk.Toplevel):
 
         ttk.Label(
             frame,
-            text="workspace name",
+            text="tip: workspace name",
             foreground="gray"
         ).grid(column=1, row=5, sticky=tk.W)
 
@@ -409,9 +409,15 @@ class P4ConfigUI(tk.Toplevel):
 
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
+        credentials_list = [
+            (self.p4port_var, p4port_entry),
+            (self.p4user_var, p4user_entry),
+            (self.p4client_var, p4client_entry)
+        ]
+
         # Focus on the first empty entry
-        for var, entry in {self.p4port_var: p4port_entry, self.p4user_var : p4user_entry, self.p4client_var : p4client_entry}.items():
-            if not var.get():
+        for value, entry in credentials_list:
+            if not value.get():
                 entry.focus_set()
                 break
 
@@ -863,5 +869,5 @@ class ToolInstaller:
         self.root.mainloop()
 
 if __name__ == "__main__":
-    Installer = ToolInstaller()
-    Installer.run()
+    app = ToolInstaller()
+    app.run()
