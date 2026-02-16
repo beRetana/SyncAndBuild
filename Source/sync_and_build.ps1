@@ -496,12 +496,12 @@ function Find-UnrealEngine {
         
         if ($choice -eq "B" -or $choice -eq "b") {
 
-            $form = New-Object System.Windows.Forms.Form
-            $form.TopMost = $true 
-            $form.WindowState = "Minimized"
-            $form.ShowInTaskbar = $false 
-
             Add-Type -AssemblyName System.Windows.Forms
+
+            $form = New-Object System.Windows.Forms.Form
+            $form.TopMost = $true
+            $form.WindowState = "Minimized"
+            $form.ShowInTaskbar = $false
             $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
             $dialog.Description = "Select your Unreal Engine installation folder (e.g., UE_5.6)"
             $dialog.RootFolder = "MyComputer"
@@ -515,6 +515,7 @@ function Find-UnrealEngine {
                 $buildBat = Join-Path $selectedPath $script:CONSTANTS.Paths.UnrealBuildBat
                 
                 if (Test-Path $buildBat) {
+                    Save-ConfigValue $script:CONSTANTS.ConfigKeys.EnginePath $selectedPath
                     return $selectedPath
                 } else {
                     Write-Host ""
